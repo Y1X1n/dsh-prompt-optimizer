@@ -1,0 +1,210 @@
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+// 类型级引入,激活 'conversation.input.dock' 的 SlotMap 合并声明。
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { SparkleIcon } from './SparkleIcon.js'
+import type { OptimizerController } from './controller.js'
+
+export type ResultDockProps = PropsRuntime<'conversation.input.dock'>
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // 非安全上下文(局域网 http)没有 clipboard API,走 textarea 兜底。
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+/** 全部走 Harness 设计令牌(--dsw-alias-*),明暗主题自动跟随;变量缺失时用括号内兜底值。 */
+const styles = {
+  panel: {
+    marginBottom: 6,
+    borderRadius: 10,
+    border: '1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.3))',
+    background: 'var(--dsw-alias-bg-layer-2, #202226)',
+    color: 'var(--dsw-alias-label-primary, inherit)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+    padding: '12px 14px',
+    fontSize: 13,
+    lineHeight: 1.6,
+    fontFamily: 'var(--dsw-font-family, inherit)',
+  } as const,
+  header: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } as const,
+  title: { fontWeight: 600, flex: 1 } as const,
+  modelBadge: {
+    fontSize: 11,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+    border: '1px solid var(--dsw-alias-border-l3, rgba(128,128,128,0.25))',
+    borderRadius: 999,
+    padding: '0 8px',
+  } as const,
+  close: {
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--dsw-alias-label-primary-dimmed, inherit)',
+    cursor: 'pointer',
+    fontSize: 14,
+    padding: '0 4px',
+  } as const,
+  body: { maxHeight: '40vh', overflowY: 'auto', paddingRight: 4 } as const,
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+    margin: '10px 0 4px',
+  } as const,
+  pre: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' } as const,
+  optimizedBox: {
+    background: 'var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.08))',
+    borderRadius: 6,
+    padding: '8px 10px',
+  } as const,
+  actions: { display: 'flex', gap: 8, marginTop: 12 } as const,
+  actionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 12px',
+    fontSize: 12,
+    borderRadius: 6,
+    border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4))',
+    background: 'var(--dsw-alias-button-tool-bar-fill, transparent)',
+    color: 'var(--dsw-alias-label-primary, inherit)',
+    cursor: 'pointer',
+  } as const,
+  primaryBtn: {
+    background: 'var(--dsw-alias-button-primary-fill, #3b6ef6)',
+    borderColor: 'transparent',
+    color: 'var(--dsw-alias-label-primary-inverted, #fff)',
+  } as const,
+  errorText: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', whiteSpace: 'pre-wrap' } as const,
+  warnText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: 'var(--dsw-alias-state-warn-primary, #d4a72c)',
+  } as const,
+  loading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    color: 'var(--dsw-alias-label-primary-dimmed, inherit)',
+    padding: '8px 0',
+  } as const,
+}
+
+/** 输入卡上方整行的结果面板:注册进 'conversation.input.dock',不遮挡输入框。 */
+export function createResultDock(controller: OptimizerController) {
+  return function OptimizerResultDock(props: ResultDockProps) {
+    const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+    const [copied, setCopied] = useState(false)
+
+    useEffect(() => {
+      if (!state.open) return
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') controller.close()
+      }
+      document.addEventListener('keydown', onKey)
+      return () => document.removeEventListener('keydown', onKey)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.open])
+
+    if (!state.open) return null
+    const { result } = state
+
+    const onCopy = async () => {
+      if (!result) return
+      setCopied(await copyText(result.optimized))
+      setTimeout(() => setCopied(false), 1500)
+    }
+    const onReplace = () => {
+      if (!result) return
+      props.inputActions.setDraft(result.optimized)
+      controller.close()
+    }
+
+    return (
+      <div style={styles.panel} role="dialog" aria-label="提示词优化">
+        <div style={styles.header}>
+          <SparkleIcon size={15} />
+          <span style={styles.title}>提示词优化</span>
+          {result && (
+            <span style={styles.modelBadge}>
+              {result.provider} / {result.model}
+            </span>
+          )}
+          <button type="button" style={styles.close} title="关闭 (Esc)" onClick={() => controller.close()}>
+            ✕
+          </button>
+        </div>
+
+        {state.status === 'loading' && (
+          <div style={styles.loading}>
+            <SparkleIcon spinning />
+            正在分析并优化,请稍候…(Esc 取消)
+          </div>
+        )}
+
+        {state.status === 'error' && (
+          <>
+            <div style={styles.sectionTitle}>出错了</div>
+            <div style={styles.errorText}>{state.error}</div>
+            <div style={styles.actions}>
+              <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                重试
+              </button>
+              <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+                关闭
+              </button>
+            </div>
+          </>
+        )}
+
+        {state.status === 'done' && result && (
+          <>
+            <div style={styles.body}>
+              {result.analysis && (
+                <>
+                  <div style={styles.sectionTitle}>分析诊断</div>
+                  <pre style={styles.pre}>{result.analysis}</pre>
+                </>
+              )}
+              <div style={styles.sectionTitle}>优化结果</div>
+              <div style={styles.optimizedBox}>
+                <pre style={styles.pre}>{result.optimized}</pre>
+              </div>
+              {result.truncated && (
+                <div style={styles.warnText}>
+                  输出达到 Token 上限被截断。可在 设置 → 插件配置 → 提示词优化 中调高「最大输出 Token」。
+                </div>
+              )}
+            </div>
+            <div style={styles.actions}>
+              <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
+                替换输入框
+              </button>
+              <button type="button" style={styles.actionBtn} onClick={onCopy}>
+                {copied ? '已复制 ✓' : '复制'}
+              </button>
+              <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                重新优化
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+}

@@ -1,0 +1,219 @@
+import type { Context } from '@deepseek-ai/cordis'
+import Schema from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { buildSystemPrompt, buildUserPayload, parseOptimizerOutput, type OutputLanguage } from './prompt.js'
+
+export const name = 'dsh-prompt-optimizer'
+// 硬依赖只有 llm。HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫
+// httpServer,0.1.0-rc.x 运行时叫 webServer),用 ctx.inject 双名等待,避免
+// 静态 inject 声明错位时把整个 Harness 组合启动拖垮。
+export const inject = ['llm']
+
+export interface Config {
+  /** 优化输出的语言。 */
+  language: OutputLanguage
+  /** 固定模型,'provider/model' 形式;留空 = 跟随发起请求的会话当前选择。 */
+  model?: string
+  /** 单次优化调用的最大输出 token 数。 */
+  maxTokens: number
+}
+
+export const Config: Schema<Config> = Schema.object({
+  language: Schema.union(['zh', 'en'] as const).default('zh'),
+  model: Schema.string(),
+  maxTokens: Schema.number().min(1024).max(32768).default(8192),
+})
+
+const NS = settingsNamespace('prompt-optimizer')
+const ROUTE_PATH = '/dsh-prompt-optimizer/optimize'
+const MAX_BODY_BYTES = 256 * 1024
+
+interface OptimizeRequestBody {
+  text?: unknown
+  provider?: unknown
+  model?: unknown
+  reasoningEffort?: unknown
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function writeJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
+  const payload = JSON.stringify(body)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+  })
+  res.end(payload)
+}
+
+/** 读取并解析 JSON 请求体,带大小上限。 */
+async function readJsonBody(req: import('node:http').IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    const buf = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer)
+    size += buf.length
+    if (size > MAX_BODY_BYTES) throw new Error('请求体过大')
+    chunks.push(buf)
+  }
+  if (chunks.length === 0) return {}
+  return JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+}
+
+/** 折叠流式输出为纯文本;finish 为 error/aborted 时抛出,max-tokens 标记截断。 */
+async function collectText(
+  stream: AsyncIterable<import('@deepseek-ai/dsh-llm').StreamChunk>,
+): Promise<{ text: string; truncated: boolean }> {
+  let deltas = ''
+  const blocks = new Map<number, string>()
+  let truncated = false
+  for await (const chunk of stream) {
+    switch (chunk.type) {
+      case 'text-delta':
+        deltas += chunk.text
+        break
+      case 'block-end':
+        if (chunk.block.type === 'text') blocks.set(chunk.index, chunk.block.text)
+        break
+      case 'finish': {
+        const reason = chunk.reason
+        if (reason.kind === 'error' || reason.kind === 'aborted') {
+          throw new Error(`模型调用失败(${reason.failure.code}): ${reason.failure.message}`)
+        }
+        if (reason.kind === 'max-tokens') truncated = true
+        break
+      }
+      default:
+        break
+    }
+  }
+  // 优先使用增量(delta 是协议主通道);某些适配器只发 block-end 时降级。
+  const text = deltas || [...blocks.entries()].sort(([a], [b]) => a - b).map(([, t]) => t).join('')
+  return { text, truncated }
+}
+
+/** HTTP 载体服务的最小依赖面(webServer / httpServer 两个名字共用同一形状)。 */
+interface WebRouteService {
+  register(route: {
+    kind: 'exact' | 'prefix'
+    path: string
+    handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
+  }): () => void
+}
+
+export function apply(ctx: Context, config: Config) {
+  // 设置页命名空间:组合层配置作为 base,用户在 设置→插件配置 中的修改实时生效。
+  let current = (): Config => config
+  installSettingsSection(ctx, NS, Config, config, {
+    setSource: (source) => {
+      current = source
+    },
+    onChange: () => {},
+  })
+
+  let mounted = false
+  const mount = (server: WebRouteService | undefined) => {
+    if (!server || mounted) return
+    mounted = true
+    ctx.effect(() => server.register({ kind: 'exact', path: ROUTE_PATH, handler }))
+    console.log(`[${name}] loaded, POST ${ROUTE_PATH}`)
+  }
+  ctx.inject(['webServer'], (sctx) => mount((sctx as unknown as { webServer?: WebRouteService }).webServer))
+  ctx.inject(['httpServer'], (sctx) => mount((sctx as unknown as { httpServer?: WebRouteService }).httpServer))
+  ctx.effect(() => {
+    const timer = setTimeout(() => {
+      if (!mounted) {
+        console.error(`[${name}] 未找到 webServer/httpServer 服务,路由未注册——当前 dsh 版本可能不兼容`)
+      }
+    }, 10_000)
+    return () => clearTimeout(timer)
+  })
+
+  async function handler(req: IncomingMessage, res: ServerResponse) {
+      if (req.method !== 'POST') {
+        writeJson(res, 405, { ok: false, error: 'Method Not Allowed' })
+        return
+      }
+      // 客户端在响应结束前断开连接时,中止模型调用。
+      // 注意:必须用 res 的 close;req 的 close 在请求体读完就会触发,不代表断连。
+      const abort = new AbortController()
+      res.on('close', () => {
+        if (!res.writableEnded) abort.abort()
+      })
+
+      try {
+        const body = (await readJsonBody(req)) as OptimizeRequestBody
+        const text = asOptionalString(body.text)
+        if (!text) {
+          writeJson(res, 400, { ok: false, error: '提示词内容为空' })
+          return
+        }
+
+        const cfg = current()
+        // 模型路由解析顺序:设置里固定的 'provider/model' → 请求方会话当前选择
+        // → 第一个可用路由。空字符串视为未设置;provider 路由键不含 '/',模型 id 可以含。
+        let provider: string | undefined
+        let model: string | undefined
+        const pinned = asOptionalString(cfg.model)
+        if (pinned) {
+          const slash = pinned.indexOf('/')
+          if (slash > 0 && slash < pinned.length - 1) {
+            provider = pinned.slice(0, slash)
+            model = pinned.slice(slash + 1)
+          }
+        }
+        provider ??= asOptionalString(body.provider)
+        model ??= asOptionalString(body.model)
+        if (!provider || !model) {
+          const first = ctx.llm.listProviders()[0]
+          if (!provider && first) provider = first.id
+          if (provider && !model) {
+            try {
+              model = (await ctx.llm.listModels(provider))[0]?.id
+            } catch {
+              // 目录查询失败不代表路由不可用,留空往下走到明确报错。
+            }
+          }
+        }
+        if (!provider || !model) {
+          writeJson(res, 409, {
+            ok: false,
+            error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置 → 插件配置 → 提示词优化 中固定一个模型',
+          })
+          return
+        }
+
+        const message: Message = {
+          id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
+          role: 'user',
+          content: [{ type: 'text', text: buildUserPayload(text, cfg.language) }],
+          source: { kind: 'plugin', plugin: name },
+        }
+        const options: GenerateOptions = {
+          provider,
+          model,
+          system: buildSystemPrompt(cfg.language),
+          messages: [message],
+          maxTokens: cfg.maxTokens,
+          signal: abort.signal,
+        }
+        const reasoningEffort = asOptionalString(body.reasoningEffort)
+        if (reasoningEffort) {
+          options.reasoningEffort = reasoningEffort as GenerateOptions['reasoningEffort']
+        }
+
+        const raw = await collectText(ctx.llm.stream(options))
+        const parsed = parseOptimizerOutput(raw.text)
+        writeJson(res, 200, { ok: true, ...parsed, truncated: raw.truncated, provider, model })
+      } catch (error) {
+        if (abort.signal.aborted) return // 客户端已断开,无需应答
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[${name}] optimize failed:`, error)
+        writeJson(res, 502, { ok: false, error: message })
+      }
+  }
+}
