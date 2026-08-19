@@ -233,6 +233,9 @@ export function createResultDock(controller: OptimizerController) {
                   输出达到 Token 上限被截断。可在 设置 → 插件配置 → 提示词优化 中调高「最大输出 Token」。
                 </div>
               )}
+              {!result.wellFormed && (
+                <div style={styles.warnText}>模型未完全遵守输出格式,以上内容可能混入多余文字,替换前请扫一眼。</div>
+              )}
             </div>
             <div style={styles.actions}>
               {applied ? (
@@ -240,6 +243,9 @@ export function createResultDock(controller: OptimizerController) {
                   <span style={styles.appliedHint}>已替换到输入框 ✓</span>
                   <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onUndo}>
                     撤回
+                  </button>
+                  <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                    重新优化
                   </button>
                   <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
                     关闭
