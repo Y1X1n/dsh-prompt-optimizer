@@ -20,6 +20,8 @@ export interface OptimizerSettingsValue {
   temperature?: number
   /** 输出上限跟随输入长度,默认 true。 */
   autoMaxTokens?: boolean
+  /** 优化时携带会话近期对话作为上下文,默认 true。 */
+  includeContext?: boolean
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -318,11 +320,23 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           <span style={styles.label}>推理强度</span>
           <select
             style={{ ...styles.input, maxWidth: 260 }}
-            value={value.reasoningEffort ?? 'session'}
+            value={value.reasoningEffort ?? 'lowest'}
             onChange={(e) => void scope.set('reasoningEffort', e.target.value)}
           >
-            <option value="session">跟随当前会话(默认)</option>
-            <option value="lowest">降到最低档(推理模型更快)</option>
+            <option value="lowest">降到最低档(默认,推理模型更快)</option>
+            <option value="session">跟随当前会话</option>
+          </select>
+        </div>
+
+        <div style={styles.row}>
+          <span style={styles.label}>携带上下文</span>
+          <select
+            style={{ ...styles.input, maxWidth: 260 }}
+            value={value.includeContext === false ? 'off' : 'on'}
+            onChange={(e) => void scope.set('includeContext', e.target.value === 'on')}
+          >
+            <option value="on">开:参考最近对话,优化方向更贴合(默认)</option>
+            <option value="off">关:仅看草稿本身</option>
           </select>
         </div>
 

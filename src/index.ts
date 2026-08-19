@@ -3,7 +3,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { buildSystemPrompt, buildUserPayload, estimateTokens, parseOptimizerOutput, type OptimizerMode, type OutputLanguage } from './prompt.js'
+import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTokens, parseOptimizerOutput, type ConversationTurn, type OptimizerMode, type OutputLanguage } from './prompt.js'
 
 export const name = 'dsh-prompt-optimizer'
 // 硬依赖只有 llm。HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫
@@ -24,12 +24,14 @@ export interface Config {
   timeoutSeconds: number
   /** 优化模式('full'/'fast';其他值按 'full' 处理)。 */
   mode: string
-  /** 推理强度('session'/'lowest';其他值按 'session' 处理)。 */
+  /** 推理强度('lowest'/'session';其他值按 'lowest' 处理)。默认钳最低档:优化是格式化元任务,高档推理只拉长首 token 前的空等。 */
   reasoningEffort: string
   /** 采样温度(0-2,默认 0.2);优化是格式化任务,低温输出更稳定。 */
   temperature: number
   /** 输出上限跟随输入长度(默认开):长草稿时按输入 token 估算提高 maxTokens,避免截断。 */
   autoMaxTokens: boolean
+  /** 优化时携带会话近期对话作为上下文(默认开):方向更贴合;关闭后仅看草稿本身。 */
+  includeContext: boolean
 }
 
 // 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 ~/.dsh/settings.yaml,
@@ -42,9 +44,10 @@ export const Config: Schema<Config> = Schema.object({
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
   mode: Schema.string().default('full'),
-  reasoningEffort: Schema.string().default('session'),
+  reasoningEffort: Schema.string().default('lowest'),
   temperature: Schema.number().min(0).max(2).default(0.2),
   autoMaxTokens: Schema.boolean().default(true),
+  includeContext: Schema.boolean().default(true),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -57,10 +60,28 @@ interface OptimizeRequestBody {
   provider?: unknown
   model?: unknown
   reasoningEffort?: unknown
+  context?: unknown
 }
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/**
+ * 校验客户端携带的会话上下文:只接受 {role:'user'|'assistant', text} 数组,
+ * 坏条目静默丢弃,最终再过一遍预算收敛(防御性——客户端已按同一口径收敛过)。
+ */
+function parseContextInput(value: unknown): ConversationTurn[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const turns: ConversationTurn[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const { role, text } = item as Record<string, unknown>
+    if ((role === 'user' || role === 'assistant') && typeof text === 'string' && text.trim()) {
+      turns.push({ role, text: text.trim() })
+    }
+  }
+  return turns.length ? capConversationContext(turns) : undefined
 }
 
 function writeJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
@@ -289,23 +310,28 @@ export function apply(ctx: Context, config: Config) {
           }
         }
 
+        // 设置里关掉「携带上下文」时,即使客户端带了 context 也忽略(Host 侧硬开关)。
+        const context = cfg.includeContext === false ? undefined : parseContextInput(body.context)
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
           role: 'user',
-          content: [{ type: 'text', text: buildUserPayload(text, language) }],
+          content: [{ type: 'text', text: buildUserPayload(text, language, context) }],
           source: { kind: 'plugin', plugin: name },
         }
-        const system = buildSystemPrompt(language, mode)
+        // 策略分叉:有上下文走「提炼目的 + 润色」(不套模板),无上下文走「结构模板」改写。
+        const system = buildSystemPrompt(language, mode, context?.length ? 'intent' : 'template')
         // 输出上限跟随输入长度:优化结果体量与草稿正相关(完整模式还多一段分析),
         // 长草稿撞固定上限会被截断。取配置值与「输入估算 × 模式系数」的较大者,32768 封顶。
         const maxTokens =
           cfg.autoMaxTokens === false
             ? cfg.maxTokens
             : Math.min(32768, Math.max(cfg.maxTokens, Math.ceil(estimateTokens(text) * (mode === 'fast' ? 1.5 : 2))))
-        // 推理强度:默认透传会话选择;配置「最低档」时钳到该模型支持的最低
-        // effort(优化是格式化元任务,高推理只会拉长首 token 前的空等),按路由逐次解析。
+        // 推理强度:默认钳到该模型支持的最低档(优化是格式化元任务,高推理只会拉长
+        // 首 token 前的空等),按路由逐次解析;仅显式配置 'session' 时透传会话选择。
         // 无法确定最低档(目录失败/模型不暴露推理)时回退到会话值,不冒险乱发。
         const sessionEffort = asOptionalString(body.reasoningEffort)
+        // 宽松 schema 的配套归一化:仅 'session' 视为跟随会话,其余(含缺省)都钳最低档。
+        const preferSessionEffort = cfg.reasoningEffort === 'session'
 
         // 阶段二:流式响应。delta 逐段推送(SSE),done 携带最终解析结果;
         // 此阶段响应头已发出,模型错误也走事件通道,无法再改状态码。
@@ -342,7 +368,7 @@ export function apply(ctx: Context, config: Config) {
                 signal: abort.signal,
               }
               let effort = sessionEffort
-              if (cfg.reasoningEffort === 'lowest') {
+              if (!preferSessionEffort) {
                 effort = (await resolveLowestEffort(ctx.llm, attempt.provider, attempt.model)) ?? sessionEffort
               }
               if (effort) {

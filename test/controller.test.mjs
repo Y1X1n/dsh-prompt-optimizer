@@ -10,9 +10,9 @@ import { createOptimizerController } from '../lib/controller.js'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const enc = new TextEncoder()
 
-/** 构造最小可用的 ClientContext mock;sessions.models 调用次数可通过 returned.stats 观察。 */
-function makeCtx() {
-  const stats = { modelsCalls: 0 }
+/** 构造最小可用的 ClientContext mock;sessions.models / sessions.history 调用次数可通过 returned.stats 观察。 */
+function makeCtx({ historyImpl } = {}) {
+  const stats = { modelsCalls: 0, historyCalls: 0 }
   const ctx = {
     connection: {
       api: {
@@ -20,6 +20,28 @@ function makeCtx() {
           models: async () => {
             stats.modelsCalls += 1
             return { result: { ok: true, value: { current: { provider: 'sess-p', model: 'sess-m' } } } }
+          },
+          history: async () => {
+            stats.historyCalls += 1
+            if (historyImpl) return historyImpl()
+            return {
+              result: {
+                ok: true,
+                value: {
+                  hasMore: false,
+                  events: [
+                    { event: { type: 'user/message', seq: 0, time: 1, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '帮我写个周报' }] } } },
+                    { event: { type: 'assistant/message', seq: 1, time: 2, data: { message: { role: 'assistant', content: [{ type: 'text', text: '好的,本周做了哪些事?' }] } } } },
+                    // 插件注入的 user 角色消息应被排除
+                    { event: { type: 'user/message', seq: 2, time: 3, data: { role: 'user', source: { kind: 'plugin', plugin: 'x' }, content: [{ type: 'text', text: '注入内容' }] } } },
+                    // 空壳 assistant 消息(仅承载 usage)应被跳过
+                    { event: { type: 'assistant/message', seq: 3, time: 4, data: { message: { role: 'assistant', content: [] } } } },
+                    // 工具事件与上下文无关
+                    { event: { type: 'tool/result', seq: 4, time: 5, data: { message: { role: 'user', content: [{ type: 'text', text: '工具结果' }] } } } },
+                  ],
+                },
+              },
+            }
           },
         },
       },
@@ -239,6 +261,60 @@ const DONE = {
     },
   )
   console.log('✓ c9 close 中止进行中请求')
+}
+
+// c10. 会话历史 → 上下文随请求发出:真实用户输入 + 助手回复;插件注入/空壳/工具事件被过滤
+{
+  const { ctx, stats } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('草稿', 's1')
+      assert.equal(stats.historyCalls, 1, '默认应拉取一次会话历史')
+      assert.deepEqual(calls[0].body.context, [
+        { role: 'user', text: '帮我写个周报' },
+        { role: 'assistant', text: '好的,本周做了哪些事?' },
+      ])
+      assert.equal(c.getSnapshot().status, 'done')
+    },
+  )
+  console.log('✓ c10 上下文随请求发出')
+}
+
+// c11. 会话历史查询失败:静默降级为无上下文,主流程不受影响
+{
+  const { ctx } = makeCtx({
+    historyImpl: async () => {
+      throw new Error('rpc boom')
+    },
+  })
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('草稿', 's1')
+      assert.equal(calls[0].body.context, undefined, '历史失败时应无上下文')
+      assert.equal(c.getSnapshot().status, 'done')
+    },
+  )
+  console.log('✓ c11 历史查询失败降级')
+}
+
+// c12. 设置关闭「携带上下文」:跳过历史查询,请求不带 context
+{
+  const { ctx, stats } = makeCtx()
+  const c = createOptimizerController(ctx, { isContextEnabled: () => false })
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('草稿', 's1')
+      assert.equal(stats.historyCalls, 0, '关闭时不应查询会话历史')
+      assert.equal(calls[0].body.context, undefined)
+      assert.equal(c.getSnapshot().status, 'done')
+    },
+  )
+  console.log('✓ c12 关闭上下文跳过查询')
 }
 
 console.log('\ncontroller: all passed')

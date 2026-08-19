@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // 类型级引入,激活 'conversation.input.dock' 的 SlotMap 合并声明。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -38,12 +38,12 @@ const styles = {
     background: 'var(--dsw-alias-bg-layer-2, #202226)',
     color: 'var(--dsw-alias-label-primary, inherit)',
     boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-    padding: '12px 14px',
-    fontSize: 13,
-    lineHeight: 1.6,
+    padding: '10px 12px',
+    fontSize: 12.5,
+    lineHeight: 1.5,
     fontFamily: 'var(--dsw-font-family, inherit)',
   } as const,
-  header: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } as const,
+  header: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } as const,
   title: { fontWeight: 600, flex: 1 } as const,
   modelBadge: {
     fontSize: 11,
@@ -60,20 +60,20 @@ const styles = {
     fontSize: 14,
     padding: '0 4px',
   } as const,
-  body: { maxHeight: '40vh', overflowY: 'auto', paddingRight: 4 } as const,
+  body: { maxHeight: '26vh', overflowY: 'auto', paddingRight: 4 } as const,
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 600,
     color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-    margin: '10px 0 4px',
+    margin: '6px 0 2px',
   } as const,
   pre: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' } as const,
   optimizedBox: {
     background: 'var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.08))',
     borderRadius: 6,
-    padding: '8px 10px',
+    padding: '6px 8px',
   } as const,
-  actions: { display: 'flex', gap: 8, marginTop: 12 } as const,
+  actions: { display: 'flex', gap: 8, marginTop: 8 } as const,
   actionBtn: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -129,13 +129,28 @@ export function createResultDock(controller: OptimizerController) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [owns])
 
-    // 撤回自动失效:替换后用户手动改过草稿(内容不再等于替换文本),
-    // 撤回会覆盖用户编辑,此时撤掉撤回入口。
+    // 发送即关闭:三条信号任一命中即认为消息已发出——草稿被清空(直发/入队都会清)、
+    // 会话开始运行(直发)、队列变长(忙时入队)。用户手动清空输入命中第一条,同样合理。
+    // loading(优化中)期间不动:发送/清空不应误中止在跑的优化,取消走 Esc。
+    // 顺带限定 owns:其他会话的 dock 实例不得因自身状态变化影响本会话的撤回依据。
     const applied = state.applied
+    const draft = props.input.draft
+    const running = Boolean(props.session?.running)
+    const queued = props.session?.queue?.length ?? 0
+    const prevRef = useRef({ running, queued })
     useEffect(() => {
-      if (applied && props.input.draft !== applied.text) controller.clearApplied()
+      const prev = prevRef.current
+      prevRef.current = { running, queued }
+      if (!owns || state.status === 'loading') return
+      if (!draft.trim() || (!prev.running && running) || queued > prev.queued) {
+        controller.close()
+        return
+      }
+      // 撤回自动失效:替换后用户手动改过草稿(内容不再等于替换文本),
+      // 撤回会覆盖用户编辑,此时撤掉撤回入口。
+      if (applied && draft !== applied.text) controller.clearApplied()
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.input.draft, applied])
+    }, [draft, applied, owns, state.status, running, queued])
 
     if (!owns) return null
     const { result } = state

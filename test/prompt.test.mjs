@@ -2,7 +2,7 @@
  * prompt.ts 标记解析的单元测试。运行:先 `npm run build`,再 `node test/prompt.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
+import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
 
 // 1. 标准标记:正常分段
 {
@@ -74,6 +74,80 @@ import { estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } fro
   assert.equal(estimateTokens('abcd'), 1)
   assert.equal(estimateTokens('你好ab'), 3) // 2 CJK + 2 latin(0.5)→ 向上取整 3
   console.log('✓ p7 token 估算')
+}
+
+// 8. 上下文载荷:无上下文保持旧格式;有上下文带分隔段且草稿置后
+{
+  const plain = buildUserPayload('我的草稿', 'zh')
+  assert.equal(plain, '以下是我的提示词草稿:\n\n我的草稿', '无上下文时必须保持旧格式')
+
+  const ctx = buildUserPayload('我的草稿', 'zh', [
+    { role: 'user', text: '帮我写一个爬虫' },
+    { role: 'assistant', text: '好的,用什么语言?' },
+  ])
+  assert.match(ctx, /<conversation-context>/)
+  assert.match(ctx, /用户: 帮我写一个爬虫/)
+  assert.match(ctx, /助手: 好的,用什么语言\?/)
+  assert.match(ctx, /<prompt-draft>\n我的草稿\n<\/prompt-draft>/)
+  assert.ok(ctx.indexOf('conversation-context') < ctx.indexOf('prompt-draft'), '上下文必须置于草稿之前')
+  assert.match(ctx, /不要回答、延续或引用/, '必须声明上下文仅供参考')
+
+  const en = buildUserPayload('my draft', 'en', [{ role: 'user', text: 'hello' }])
+  assert.match(en, /User: hello/)
+  assert.match(en, /<prompt-draft>\nmy draft\n<\/prompt-draft>/)
+
+  // 空数组等价于无上下文
+  assert.equal(buildUserPayload('我的草稿', 'zh', []), plain)
+  console.log('✓ p8 上下文载荷')
+}
+
+// 9. 上下文预算收敛:保留最近 N 条、逐条截断、总量封顶
+{
+  // 只保留最近 8 条
+  const many = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `第${i + 1}条` }))
+  const capped = capConversationContext(many)
+  assert.equal(capped.length, 8)
+  assert.equal(capped[0].text, '第13条', '应从第 13 条开始保留')
+  assert.equal(capped.at(-1).text, '第20条')
+
+  // 单条超 600 字符截断
+  const long = capConversationContext([{ role: 'user', text: '长'.repeat(1000) }])
+  assert.equal(long[0].text.length, 601) // 600 + 省略号
+  assert.ok(long[0].text.endsWith('…'))
+
+  // 总量 1600 字符封顶:从最新往回取舍,最新的残缺也要保留
+  const bulk = Array.from({ length: 6 }, (_, i) => ({ role: 'user', text: `${i}${'字'.repeat(799)}` })) // 每条 800,截断到 601
+  const total = capConversationContext(bulk)
+  assert.ok(total.reduce((sum, t) => sum + t.text.length, 0) <= 1600, '总量不得超预算')
+  assert.ok(total.at(-1).text.startsWith('5'), '最新一条必须保留')
+
+  // 空文本条目被过滤
+  assert.deepEqual(capConversationContext([{ role: 'user', text: '  ' }]), [])
+  console.log('✓ p9 上下文预算收敛')
+}
+
+// 10. 策略分叉:默认(无上下文)套结构模板;intent(有上下文)提炼目的 + 润色、不套模板
+{
+  const tpl = buildSystemPrompt('zh')
+  assert.match(tpl, /按结构模板组织/, '默认应走结构模板')
+  assert.ok(!tpl.includes('提炼用户的真实目的'), '默认不应包含 intent 策略')
+
+  const intent = buildSystemPrompt('zh', 'full', 'intent')
+  assert.match(intent, /提炼用户的真实目的/)
+  assert.match(intent, /不要套用模板结构/)
+  assert.match(intent, /严禁回答、延续或引用/, 'intent 必须保留上下文护栏')
+  assert.ok(!intent.includes('按结构模板组织'), 'intent 不应包含模板策略')
+  assert.match(intent, /分析维度/, '完整模式保留分析段')
+
+  const fastIntent = buildSystemPrompt('zh', 'fast', 'intent')
+  assert.match(fastIntent, /提炼用户的真实目的/)
+  assert.ok(!fastIntent.includes('分析维度'), '快速模式不做诊断')
+  assert.ok(!fastIntent.includes('ANALYSIS'), '快速模式无 ANALYSIS 标记')
+
+  const en = buildSystemPrompt('en', 'full', 'intent')
+  assert.match(en, /distill what the user is really trying to achieve/)
+  assert.match(buildSystemPrompt('en'), /structure template/)
+  console.log('✓ p10 策略分叉')
 }
 
 console.log('\nprompt: all passed')

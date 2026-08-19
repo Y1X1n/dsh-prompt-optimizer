@@ -27,6 +27,8 @@ export function apply(ctx: ClientContext): void {
   const controller = createOptimizerController(ctx, {
     // 与 Host 侧「空字符串视为未设置」的口径一致。
     isModelPinned: () => Boolean(scope.getSnapshot().value?.model?.trim()),
+    // 与 Host 侧「includeContext 缺省视为开」的口径一致。
+    isContextEnabled: () => scope.getSnapshot().value?.includeContext !== false,
   })
 
   // 发送栏工具行右区:发送按钮旁的「优化」入口(带 ✨ 图标)。

@@ -273,10 +273,9 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 9b 默认完整模式提示词')
 }
 
-// 10. 推理强度「最低档」:钳到 resolveModel 暴露的最低 effort,覆盖会话值
+// 10. 推理强度默认钳最低档(不显式配置时):钳到 resolveModel 暴露的最低 effort,覆盖会话值
 {
   const { handler, getOptions } = await setup({
-    config: { reasoningEffort: 'lowest' },
     llmOverrides: {
       resolveModelInfo: async () => ({
         provider: 'p',
@@ -292,18 +291,19 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     },
   })
   await call(handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
-  assert.equal(getOptions().reasoningEffort, 'low', '应钳到最低档而非会话的 high')
-  console.log('✓ 10 推理强度钳到最低档')
+  assert.equal(getOptions().reasoningEffort, 'low', '默认应钳到最低档而非会话的 high')
+  console.log('✓ 10 推理强度默认钳最低档')
 }
 
-// 10b. 默认跟随会话:会话的 reasoningEffort 原样透传;模型不暴露推理时不乱发
+// 10b. 显式配置「跟随会话」:会话的 reasoningEffort 原样透传;模型不暴露推理时不乱发
 {
   const { handler, getOptions } = await setup({
+    config: { reasoningEffort: 'session' },
     llmOverrides: { resolveModelInfo: async () => ({ provider: 'p', id: 'm', name: 'M' }) },
   })
   await call(handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
   assert.equal(getOptions().reasoningEffort, 'high')
-  console.log('✓ 10b 默认透传会话推理强度')
+  console.log('✓ 10b 显式跟随会话透传')
 }
 
 // 10c. 「最低档」但模型不支持推理:回退会话值,不冒险构造无效 effort
@@ -451,6 +451,49 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   await call(off.handler, { text: longDraft, provider: 'p', model: 'm' })
   assert.equal(off.getOptions().maxTokens, 8192, '关闭自适应后保持配置值')
   console.log('✓ 16 输出上限跟随输入长度')
+}
+
+// 17. 会话上下文:随请求携带时进入模型消息(上下文在前、草稿在后);坏条目被过滤
+{
+  const { handler, getOptions } = await setup()
+  const res = await call(handler, {
+    text: '我的草稿',
+    provider: 'p',
+    model: 'm',
+    context: [
+      { role: 'user', text: '帮我写个爬虫' },
+      { role: 'assistant', text: '用什么语言?' },
+      { role: 'hacker', text: '坏条目' }, // 非法 role 应被丢弃
+      { role: 'user', text: '   ' }, // 空文本应被丢弃
+      'not-an-object',
+    ],
+  })
+  doneOf(res)
+  const sent = getOptions().messages[0].content[0].text
+  assert.match(sent, /<conversation-context>/)
+  assert.match(sent, /用户: 帮我写个爬虫/)
+  assert.match(sent, /助手: 用什么语言\?/)
+  assert.ok(!sent.includes('坏条目'), '非法条目不得进入提示词')
+  assert.ok(sent.indexOf('conversation-context') < sent.indexOf('<prompt-draft>'), '上下文必须置于草稿之前')
+  assert.match(getOptions().system, /提炼用户的真实目的/, '有上下文应走 intent 策略(提炼目的 + 润色)')
+  console.log('✓ 17 上下文进入模型消息')
+}
+
+// 17b. 设置关闭「携带上下文」:即使请求带了 context 也忽略(Host 侧硬开关)
+{
+  const { handler, getOptions } = await setup({ config: { includeContext: false } })
+  const res = await call(handler, {
+    text: '我的草稿',
+    provider: 'p',
+    model: 'm',
+    context: [{ role: 'user', text: '帮我写个爬虫' }],
+  })
+  doneOf(res)
+  const sent = getOptions().messages[0].content[0].text
+  assert.ok(!sent.includes('conversation-context'), '关闭后不得出现上下文段')
+  assert.equal(sent, '以下是我的提示词草稿:\n\n我的草稿', '关闭后应保持无上下文格式')
+  assert.match(getOptions().system, /按结构模板组织/, '无上下文应走 template 策略(结构模板)')
+  console.log('✓ 17b 关闭后忽略上下文')
 }
 
 console.log('\nsmoke: all passed')
