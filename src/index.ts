@@ -12,27 +12,30 @@ export const name = 'dsh-prompt-optimizer'
 export const inject = ['llm']
 
 export interface Config {
-  /** 优化输出的语言。 */
-  language: OutputLanguage
+  /** 优化输出的语言('zh'/'en';其他值按 'zh' 处理)。 */
+  language: string
   /** 固定模型,'provider/model' 形式;留空 = 跟随发起请求的会话当前选择。 */
   model?: string
   /** 单次优化调用的最大输出 token 数。 */
   maxTokens: number
   /** 单次优化调用的超时时间(秒);超时后中止模型调用并通知客户端。 */
   timeoutSeconds: number
-  /** 优化模式:full = 诊断分析 + 优化改写;fast = 仅优化(更快)。 */
-  mode: OptimizerMode
-  /** 推理强度:session = 跟随会话;lowest = 钳到该模型支持的最低档(推理模型等待显著缩短)。 */
-  reasoningEffort: 'session' | 'lowest'
+  /** 优化模式('full'/'fast';其他值按 'full' 处理)。 */
+  mode: string
+  /** 推理强度('session'/'lowest';其他值按 'session' 处理)。 */
+  reasoningEffort: string
 }
 
+// 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 ~/.dsh/settings.yaml,
+// 旧版本写过的枚举值(如 mode: custom)若撞上严格 union 会让 schema 校验抛错,
+// 整个命名空间注册失败、设置页卡片直接消失。宽松接收 + 使用处归一化更稳。
 export const Config: Schema<Config> = Schema.object({
-  language: Schema.union(['zh', 'en'] as const).default('zh'),
+  language: Schema.string().default('zh'),
   model: Schema.string(),
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
-  mode: Schema.union(['full', 'fast'] as const).default('full'),
-  reasoningEffort: Schema.union(['session', 'lowest'] as const).default('session'),
+  mode: Schema.string().default('full'),
+  reasoningEffort: Schema.string().default('session'),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -199,6 +202,9 @@ export function apply(ctx: Context, config: Config) {
         }
 
         const cfg = current()
+        // 宽松 schema 的配套归一化:未知枚举值一律回落默认,保证旧版设置文档可用。
+        const language: OutputLanguage = cfg.language === 'en' ? 'en' : 'zh'
+        const mode: OptimizerMode = cfg.mode === 'fast' ? 'fast' : 'full'
         // 模型路由解析顺序:设置里固定的 'provider/model' → 请求方会话当前选择
         // → 第一个可用路由。空字符串视为未设置;provider 路由键不含 '/',模型 id 可以含。
         let provider: string | undefined
@@ -235,13 +241,13 @@ export function apply(ctx: Context, config: Config) {
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
           role: 'user',
-          content: [{ type: 'text', text: buildUserPayload(text, cfg.language) }],
+          content: [{ type: 'text', text: buildUserPayload(text, language) }],
           source: { kind: 'plugin', plugin: name },
         }
         const options: GenerateOptions = {
           provider,
           model,
-          system: buildSystemPrompt(cfg.language, cfg.mode),
+          system: buildSystemPrompt(language, mode),
           messages: [message],
           maxTokens: cfg.maxTokens,
           signal: abort.signal,

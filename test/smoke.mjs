@@ -311,4 +311,17 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 10c 不支持推理时回退会话值')
 }
 
+// 11. 回归:旧版设置文档残留的非法枚举值(mode: custom 等)不得让 schema 校验抛错
+// ——那会导致整个命名空间注册失败、设置页卡片消失。宽松接收 + 使用处归一化。
+{
+  const resolved = plugin.Config({ language: 'fr', mode: 'custom', reasoningEffort: 'weird', maxTokens: 8192, timeoutSeconds: 120 })
+  assert.equal(resolved.mode, 'custom', 'schema 应宽松接收未知枚举值')
+  const { handler, getOptions } = await setup({ config: { language: 'fr', mode: 'custom', reasoningEffort: 'weird' } })
+  const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  doneOf(res)
+  assert.ok(getOptions().system.includes('ANALYSIS'), '未知 mode 应按完整模式处理')
+  assert.match(getOptions().system, /资深提示词工程专家/, '未知 language 应按中文处理')
+  console.log('✓ 11 旧版非法枚举值归一化')
+}
+
 console.log('\nsmoke: all passed')
