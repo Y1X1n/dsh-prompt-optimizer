@@ -40,19 +40,31 @@ const styles = {
     color: 'var(--dsw-alias-label-primary, inherit)',
   } as const,
   hint: { color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))', fontSize: 12 } as const,
+  fieldError: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', fontSize: 12 } as const,
 }
 
-/** 文本输入:本地暂存,失焦或回车时写入 Host 设置文档。 */
+/** 文本输入:本地暂存,失焦或回车时校验并写入 Host 设置文档;非法输入提示并回退到生效值。 */
 function TextField(props: {
   label: string
   value: string
   placeholder?: string
+  /** 返回错误提示表示非法;返回 null 表示合法、可以提交。 */
+  validate?: (value: string) => string | null
   onCommit: (value: string) => void
 }) {
   const [text, setText] = useState(props.value)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => setText(props.value), [props.value])
   const commit = () => {
-    if (text !== props.value) props.onCommit(text)
+    if (text === props.value) return
+    const problem = props.validate?.(text) ?? null
+    if (problem) {
+      setError(problem)
+      setText(props.value)
+      return
+    }
+    setError(null)
+    props.onCommit(text)
   }
   return (
     <div style={styles.row}>
@@ -61,12 +73,16 @@ function TextField(props: {
         style={styles.input}
         value={text}
         placeholder={props.placeholder}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value)
+          setError(null)
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
         }}
       />
+      {error && <span style={styles.fieldError}>{error}</span>}
     </div>
   )
 }
@@ -149,19 +165,21 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           label="最大输出 Token"
           value={String(value.maxTokens ?? 8192)}
           placeholder="8192"
-          onCommit={(v) => {
+          validate={(v) => {
             const n = Number.parseInt(v, 10)
-            if (Number.isFinite(n) && n >= 1024 && n <= 32768) void scope.set('maxTokens', n)
+            return Number.isFinite(n) && n >= 1024 && n <= 32768 ? null : '请输入 1024–32768 之间的数字'
           }}
+          onCommit={(v) => void scope.set('maxTokens', Number.parseInt(v, 10))}
         />
         <TextField
           label="超时时间(秒)"
           value={String(value.timeoutSeconds ?? 120)}
           placeholder="120"
-          onCommit={(v) => {
+          validate={(v) => {
             const n = Number.parseInt(v, 10)
-            if (Number.isFinite(n) && n >= 10 && n <= 600) void scope.set('timeoutSeconds', n)
+            return Number.isFinite(n) && n >= 10 && n <= 600 ? null : '请输入 10–600 之间的数字'
           }}
+          onCommit={(v) => void scope.set('timeoutSeconds', Number.parseInt(v, 10))}
         />
         {!snap.writable && snap.status === 'ready' && (
           <div style={styles.hint}>当前为内存模式:设置不会持久化。</div>
