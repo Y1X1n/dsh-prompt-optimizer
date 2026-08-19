@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # npm ci 触发 prepare 钩子自动构建 lib/(测试直接跑在构建产物上)。
+      - run: npm ci --legacy-peer-deps
+      # 同步客户端类型包(上游部分包未发布,生成最小占位),typecheck 依赖它。
+      - run: npm run sync:types
+      - run: npm run typecheck
+      - run: npm test

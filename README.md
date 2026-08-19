@@ -1,5 +1,9 @@
 # dsh-prompt-optimizer
 
+**中文** | [English](README.en.md)
+
+[![CI](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml)
+
 DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」按钮(✨ 图标),一键分析并优化当前输入的提示词草稿,**结果经 SSE 流式逐段上屏**。优化调用默认复用当前会话的模型路由(每次点击实时读取,会话里切换模型立即生效)。
 
 - **Host 半侧**:注册 `POST /dsh-prompt-optimizer/optimize`(SSE 流式)与 `POST /dsh-prompt-optimizer/test-model`(连通性探活)两条路由,调用 `ctx.llm` 完成「分析 + 改写」。
@@ -102,16 +106,19 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ```
 点击「优化」
-  → Client 读取输入框草稿 + 当前会话模型选择(session.models RPC,每次点击实时查询;
-    设置里固定了模型时跳过这一步,Host 固定值优先)
-  → POST /dsh-prompt-optimizer/optimize { text, provider, model, reasoningEffort }
+  → Client 拆分斜杠命令前缀(/goal 等只优化正文),并行拉取当前会话模型选择
+    (session.models RPC,每次点击实时查询;设置里固定了模型时跳过,Host 固定值优先)
+    与会话近期对话(session.history RPC,最近 8 条/1600 字符封顶,可在设置卡关闭)
+  → POST /dsh-prompt-optimizer/optimize { text, provider, model, reasoningEffort, context?, previous? }
+    (previous = 轻量记忆链:在优化稿上修改后再优化时携带的上轮结果)
   → Host 以系统元提示词调用 ctx.llm.stream()
     (路由解析:设置固定值 → 会话选择 → 第一个可用路由;可配回退路由,零产出失败自动 failover;
-     输出上限默认按输入 token 估算抬升;可选推理钳档/低温度)
+     策略分叉:有上下文走「提炼目的+润色」,无上下文走「结构模板」;
+     输出上限默认按输入 token 估算抬升;默认推理钳最低档/低温度)
   → text-delta 经 SSE 逐段推送,面板实时显示「分析诊断 / 优化结果」两段
     (按 <<<ANALYSIS>>> / <<<OPTIMIZED>>> 标记增量解析,容忍标记空白变体)
   → done 事件携带最终解析结果;max-tokens 结束带 truncated 标记
-  → 一键替换输入框(可撤回)/ 复制 / 重新优化
+  → 一键替换输入框(可撤回,自动拼回斜杠前缀)/ 复制 / 重新优化;发送消息后面板自动关闭
 ```
 
 ## 开发
