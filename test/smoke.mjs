@@ -487,10 +487,12 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     provider: 'p',
     model: 'm',
     context: [{ role: 'user', text: '帮我写个爬虫' }],
+    previous: '上一轮结果',
   })
   doneOf(res)
   const sent = getOptions().messages[0].content[0].text
   assert.ok(!sent.includes('conversation-context'), '关闭后不得出现上下文段')
+  assert.ok(!sent.includes('previous-optimized'), '关闭后不得出现记忆链段')
   assert.equal(sent, '以下是我的提示词草稿:\n\n我的草稿', '关闭后应保持无上下文格式')
   assert.match(getOptions().system, /按结构模板组织/, '无上下文应走 template 策略(结构模板)')
   console.log('✓ 17b 关闭后忽略上下文')

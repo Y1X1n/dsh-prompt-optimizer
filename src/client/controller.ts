@@ -11,6 +11,8 @@ export interface OptimizeResult {
   model: string
   /** 主路由失败、实际由回退路由产出时为 true。 */
   fallbackUsed: boolean
+  /** 从点击到 done 的客户端实测耗时(毫秒),含会话查询与排队等待。 */
+  durationMs?: number
 }
 
 export interface OptimizerState {
@@ -39,6 +41,25 @@ export function splitCommandPrefix(text: string): { prefix?: string; body: strin
   const match = /^(\/[A-Za-z][\w-]*)\s+([\s\S]+)$/.exec(trimmed)
   if (!match || !match[2].trim()) return { body: trimmed }
   return { prefix: match[1], body: match[2].trim() }
+}
+
+/**
+ * 发送即关闭面板的判定(纯函数,便于测试)。三条信号任一命中即认为消息已发出:
+ * 草稿被清空(直发/入队都会清,用户手动清空同理——面板引用的草稿已不存在)、
+ * 会话开始运行(直发)、队列变长(忙时入队)。
+ * loading(优化中)期间一律不关:发送/清空不应误中止在跑的优化,取消走 Esc。
+ */
+export function shouldAutoClose(input: {
+  open: boolean
+  status: 'idle' | 'loading' | 'done' | 'error'
+  draft: string
+  prevRunning: boolean
+  running: boolean
+  prevQueued: number
+  queued: number
+}): boolean {
+  if (!input.open || input.status === 'loading') return false
+  return !input.draft.trim() || (!input.prevRunning && input.running) || input.queued > input.prevQueued
 }
 
 /** 摊平 content blocks 为纯文本(图片等非文本块对优化意图无帮助,忽略)。 */
@@ -119,14 +140,24 @@ export function createOptimizerController(
     // 轻量记忆链:同一会话已有优化结果、且本轮草稿较上轮发生了变化(用户在我们
     // 的产物上继续编辑)时,把上轮结果作为延续参考传给模型;发送即关闭面板会清掉
     // result,记忆链自然归零。同文重试(retry)不带——那是重新生成,不是迭代。
+    // 跟随「携带上下文」开关:关闭后不带任何会话衍生材料;上轮格式退化
+    // (wellFormed=false,可能混入多余文字)的结果也不传,避免噪声延续。
     // 注意:必须在下面 set(loading) 之前读旧 state。
     const previous =
-      state.result && state.last?.sessionId === sessionId && state.last.text !== draft ? state.result.optimized : undefined
+      state.result &&
+      state.result.wellFormed &&
+      state.last?.sessionId === sessionId &&
+      state.last.text !== draft &&
+      (opts.isContextEnabled?.() ?? true)
+        ? state.result.optimized
+        : undefined
     abort?.abort()
     clearLiveTimer()
     liveRaw = ''
     const controller = new AbortController()
     abort = controller
+    // 从点击起计时(含会话查询与首 token 前的等待),done 时记入 result 展示。
+    const startedAt = Date.now()
     set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId, prefix }, applied: null })
     try {
       // 复用当前会话的模型选择(每次点击实时查询,会话里换模型立即生效);
@@ -219,6 +250,7 @@ export function createOptimizerController(
                 provider: String(event.provider ?? ''),
                 model: String(event.model ?? ''),
                 fallbackUsed: event.fallbackUsed === true,
+                durationMs: Date.now() - startedAt,
               },
             })
           } else if (event.type === 'error') {

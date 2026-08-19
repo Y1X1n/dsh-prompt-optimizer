@@ -3,7 +3,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // 类型级引入,激活 'conversation.input.dock' 的 SlotMap 合并声明。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SparkleIcon } from './SparkleIcon.js'
-import type { OptimizerController } from './controller.js'
+import { shouldAutoClose, type OptimizerController } from './controller.js'
 
 export type ResultDockProps = PropsRuntime<'conversation.input.dock'>
 
@@ -129,9 +129,7 @@ export function createResultDock(controller: OptimizerController) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [owns])
 
-    // 发送即关闭:三条信号任一命中即认为消息已发出——草稿被清空(直发/入队都会清)、
-    // 会话开始运行(直发)、队列变长(忙时入队)。用户手动清空输入命中第一条,同样合理。
-    // loading(优化中)期间不动:发送/清空不应误中止在跑的优化,取消走 Esc。
+    // 发送即关闭:判定逻辑在 controller.shouldAutoClose(纯函数,有单测)。
     // 顺带限定 owns:其他会话的 dock 实例不得因自身状态变化影响本会话的撤回依据。
     const applied = state.applied
     const draft = props.input.draft
@@ -141,8 +139,8 @@ export function createResultDock(controller: OptimizerController) {
     useEffect(() => {
       const prev = prevRef.current
       prevRef.current = { running, queued }
-      if (!owns || state.status === 'loading') return
-      if (!draft.trim() || (!prev.running && running) || queued > prev.queued) {
+      if (!owns) return
+      if (shouldAutoClose({ open: true, status: state.status, draft, prevRunning: prev.running, running, prevQueued: prev.queued, queued })) {
         controller.close()
         return
       }
@@ -196,6 +194,7 @@ export function createResultDock(controller: OptimizerController) {
             <span style={styles.modelBadge}>
               {result.provider} / {result.model}
               {result.fallbackUsed ? ' · 已回退' : ''}
+              {typeof result.durationMs === 'number' ? ` · 用时 ${(result.durationMs / 1000).toFixed(1)}s` : ''}
             </span>
           )}
           <button type="button" style={styles.close} title="关闭 (Esc)" onClick={() => controller.close()}>

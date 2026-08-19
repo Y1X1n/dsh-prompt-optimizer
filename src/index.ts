@@ -314,7 +314,8 @@ export function apply(ctx: Context, config: Config) {
         // 设置里关掉「携带上下文」时,即使客户端带了 context 也忽略(Host 侧硬开关)。
         const context = cfg.includeContext === false ? undefined : parseContextInput(body.context)
         // 轻量记忆链:上一轮优化结果,截断到 1500 字符(它只是延续参考,不是优化对象)。
-        const previousRaw = asOptionalString(body.previous)
+        // 与 context 一样跟随「携带上下文」开关——关闭后不带任何会话衍生材料。
+        const previousRaw = cfg.includeContext === false ? undefined : asOptionalString(body.previous)
         const previous = previousRaw ? (previousRaw.length > 1500 ? `${previousRaw.slice(0, 1500)}…` : previousRaw) : undefined
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],

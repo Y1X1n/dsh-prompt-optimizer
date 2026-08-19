@@ -5,7 +5,7 @@
  * 运行:先 `npm run build`,再 `node test/controller.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { createOptimizerController, splitCommandPrefix } from '../lib/controller.js'
+import { createOptimizerController, shouldAutoClose, splitCommandPrefix } from '../lib/controller.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const enc = new TextEncoder()
@@ -100,6 +100,7 @@ const DONE = {
       assert.equal(s.status, 'done')
       assert.equal(s.result.optimized, '优化后的提示词')
       assert.equal(s.result.provider, 'p')
+      assert.equal(typeof s.result.durationMs, 'number', 'done 应记录客户端实测耗时')
       assert.equal(s.live, null, 'done 后 live 应清空')
       assert.equal(s.last.text, '草稿', 'last 应存 trim 后的草稿')
       assert.equal(s.last.sessionId, 's1')
@@ -359,6 +360,46 @@ const DONE = {
     },
   )
   console.log('✓ c14 轻量记忆链')
+}
+
+// c15. 记忆链门槛:上轮格式退化(wellFormed=false)或关闭「携带上下文」时不带 previous
+{
+  const DEGRADED = { ...DONE, wellFormed: false }
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DEGRADED]),
+    async (calls) => {
+      await c.optimize('原始草稿', 's1')
+      await c.optimize('改过的草稿', 's1')
+      assert.equal(calls[1].body.previous, undefined, '格式退化的上轮结果不得进入记忆链')
+    },
+  )
+  const off = createOptimizerController(makeCtx().ctx, { isContextEnabled: () => false })
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await off.optimize('原始草稿', 's1')
+      await off.optimize('改过的草稿', 's1')
+      assert.equal(calls[1].body.previous, undefined, '关闭携带上下文后不带 previous')
+    },
+  )
+  console.log('✓ c15 记忆链门槛')
+}
+
+// c16. 发送即关闭判定(纯函数):草稿清空 / running 翻转 / 入队;loading 与未打开不关
+{
+  const base = { open: true, status: 'done', draft: '还有内容', prevRunning: false, running: false, prevQueued: 0, queued: 0 }
+  assert.equal(shouldAutoClose(base), false, '无信号时不关')
+  assert.equal(shouldAutoClose({ ...base, draft: '' }), true, '草稿清空应关')
+  assert.equal(shouldAutoClose({ ...base, draft: '   ' }), true, '草稿只剩空白应关')
+  assert.equal(shouldAutoClose({ ...base, running: true }), true, 'running 翻转应关')
+  assert.equal(shouldAutoClose({ ...base, prevRunning: true, running: true }), false, 'running 持续为真不算翻转')
+  assert.equal(shouldAutoClose({ ...base, queued: 1 }), true, '入队应关')
+  assert.equal(shouldAutoClose({ ...base, queued: 1, prevQueued: 1 }), false, '队列长度没变不关')
+  assert.equal(shouldAutoClose({ ...base, status: 'loading', draft: '' }), false, '优化中不关')
+  assert.equal(shouldAutoClose({ ...base, open: false, draft: '' }), false, '未打开不关')
+  console.log('✓ c16 发送即关闭判定')
 }
 
 console.log('\ncontroller: all passed')
