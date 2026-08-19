@@ -35,8 +35,33 @@ const styles = {
     color: 'var(--dsw-alias-label-primary, inherit)',
     fontFamily: 'var(--dsw-font-family, inherit)',
   } as const,
-  title: { fontSize: 14, fontWeight: 600, marginBottom: 2 } as const,
+  title: { fontSize: 14, fontWeight: 600 } as const,
   desc: { color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))', marginBottom: 12 } as const,
+  headerBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    color: 'inherit',
+    font: 'inherit',
+    cursor: 'pointer',
+    textAlign: 'left',
+  } as const,
+  chevron: {
+    fontSize: 11,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+    transition: 'transform 0.15s ease',
+  } as const,
+  headerDesc: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    fontWeight: 400,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+  } as const,
+  body: { marginTop: 12 } as const,
   row: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 } as const,
   label: { width: 110, flexShrink: 0, color: 'var(--dsw-alias-label-primary, inherit)' } as const,
   input: {
@@ -159,10 +184,35 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       }
     }
 
+    // 卡片默认收起(设置项已较多),展开状态持久化到 localStorage。
+    const EXPAND_KEY = 'dsh-prompt-optimizer.settings-expanded'
+    const [expanded, setExpanded] = useState(() => {
+      try {
+        return localStorage.getItem(EXPAND_KEY) === '1'
+      } catch {
+        return false
+      }
+    })
+    const toggle = () =>
+      setExpanded((v) => {
+        const next = !v
+        try {
+          localStorage.setItem(EXPAND_KEY, next ? '1' : '0')
+        } catch {
+          // 隐私模式等场景下不可写,展开态仅本次有效。
+        }
+        return next
+      })
+
     return (
       <section style={styles.card}>
-        <div style={styles.title}>提示词优化</div>
-        <div style={styles.desc}>发送栏「优化」按钮(✨ 图标)的行为配置。</div>
+        <button type="button" style={styles.headerBtn} onClick={toggle} aria-expanded={expanded}>
+          <span style={{ ...styles.chevron, transform: expanded ? 'rotate(90deg)' : 'none' }}>▸</span>
+          <span style={styles.title}>提示词优化</span>
+          <span style={styles.headerDesc}>发送栏「优化」按钮(✨ 图标)的行为配置</span>
+        </button>
+        {expanded && (
+          <div style={styles.body}>
         {snap.status === 'loading' && <div style={styles.hint}>设置加载中…</div>}
         {snap.status === 'unavailable' && (
           <div style={styles.hint}>当前连接不可写设置(远程页面为内存模式),改动仅在本次会话生效。</div>
@@ -226,7 +276,8 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         )}
 
         <div style={styles.row}>
-          <span style={styles.label}>模型连通性</span>          <button
+          <span style={styles.label}>模型连通性</span>
+          <button
             type="button"
             style={{ ...styles.refreshBtn, ...(test.status === 'testing' ? { opacity: 0.45, cursor: 'default' } : {}) }}
             disabled={test.status === 'testing'}
@@ -319,6 +370,8 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         </div>
         {!snap.writable && snap.status === 'ready' && (
           <div style={styles.hint}>当前为内存模式:设置不会持久化。</div>
+        )}
+          </div>
         )}
       </section>
     )
