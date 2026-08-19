@@ -24,7 +24,7 @@ function makeReq(body, method = 'POST') {
   return req
 }
 
-/** 调用插件注册的 handler 并收集响应。 */
+/** 调用插件注册的 handler 并收集响应。raw 为字符串时按原样发送(用于畸形 JSON 用例)。 */
 async function call(handler, body, method) {
   const res = {
     status: 0,
@@ -40,7 +40,11 @@ async function call(handler, body, method) {
       res.writableEnded = true
     },
   }
-  await handler(makeReq(body, method), res)
+  const req =
+    typeof body === 'string'
+      ? Object.assign(Readable.from([body]), { method: method ?? 'POST' })
+      : makeReq(body, method)
+  await handler(req, res)
   return res
 }
 
@@ -144,6 +148,17 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   const b = await call(handler, undefined, 'GET')
   assert.equal(b.status, 405)
   console.log('✓ 5 参数与方法校验')
+}
+
+// 5b. 畸形 JSON → 400;超大请求体 → 413(不再是笼统的 502)
+{
+  const { handler } = await setup()
+  const bad = await call(handler, '{not json')
+  assert.equal(bad.status, 400)
+  assert.match(JSON.parse(bad.body).error, /JSON/)
+  const big = await call(handler, JSON.stringify({ text: 'x'.repeat(300 * 1024) }))
+  assert.equal(big.status, 413)
+  console.log('✓ 5b 畸形 JSON → 400,超大请求体 → 413')
 }
 
 // 6. 模型终态错误 → 502

@@ -50,6 +50,9 @@ function writeJson(res: import('node:http').ServerResponse, status: number, body
   res.end(payload)
 }
 
+/** 请求体超过大小上限时抛出,用于映射 413(与 JSON 解析失败的 400 区分)。 */
+class PayloadTooLargeError extends Error {}
+
 /** 读取并解析 JSON 请求体,带大小上限。 */
 async function readJsonBody(req: import('node:http').IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -57,7 +60,7 @@ async function readJsonBody(req: import('node:http').IncomingMessage): Promise<u
   for await (const chunk of req) {
     const buf = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer)
     size += buf.length
-    if (size > MAX_BODY_BYTES) throw new Error('请求体过大')
+    if (size > MAX_BODY_BYTES) throw new PayloadTooLargeError('请求体超过 256KB 上限')
     chunks.push(buf)
   }
   if (chunks.length === 0) return {}
@@ -146,7 +149,18 @@ export function apply(ctx: Context, config: Config) {
       })
 
       try {
-        const body = (await readJsonBody(req)) as OptimizeRequestBody
+        let body: OptimizeRequestBody
+        try {
+          body = (await readJsonBody(req)) as OptimizeRequestBody
+        } catch (error) {
+          // 请求体问题是客户端错误(400/413),不是上游模型失败(502)。
+          if (error instanceof PayloadTooLargeError) {
+            writeJson(res, 413, { ok: false, error: error.message })
+          } else {
+            writeJson(res, 400, { ok: false, error: '请求体不是合法的 JSON' })
+          }
+          return
+        }
         const text = asOptionalString(body.text)
         if (!text) {
           writeJson(res, 400, { ok: false, error: '提示词内容为空' })
