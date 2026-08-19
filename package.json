@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-optimizer",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "DeepSeek Harness 插件:在发送栏旁一键分析并优化提示词(复用当前会话模型)",
   "license": "MIT",
   "type": "module",
