@@ -41,6 +41,16 @@ const styles = {
   } as const,
   hint: { color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))', fontSize: 12 } as const,
   fieldError: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', fontSize: 12 } as const,
+  refreshBtn: {
+    flexShrink: 0,
+    padding: '4px 10px',
+    fontSize: 12,
+    borderRadius: 6,
+    border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4))',
+    background: 'var(--dsw-alias-button-tool-bar-fill, transparent)',
+    color: 'var(--dsw-alias-label-primary, inherit)',
+    cursor: 'pointer',
+  } as const,
 }
 
 /** 文本输入:本地暂存,失焦或回车时校验并写入 Host 设置文档;非法输入提示并回退到生效值。 */
@@ -96,24 +106,26 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
     )
     const value = snap.value ?? {}
 
-    // 模型下拉需要目录:卡片挂载时拉取一次(失败可重试)。
+    // 模型下拉需要目录:挂载时拉取一次,失败或后续新增 provider 时可手动刷新。
     const [groups, setGroups] = useState<ModelProviderGroup[] | null>(null)
-    const [catalogError, setCatalogError] = useState(false)
-    useEffect(() => {
-      let stale = false
-      ctx.connection.api
-        .llm.models({})
-        .then((resp) => {
-          if (stale) return
-          if (resp.result.ok) setGroups(resp.result.value.groups)
-          else setCatalogError(true)
-        })
-        .catch(() => {
-          if (!stale) setCatalogError(true)
-        })
-      return () => {
-        stale = true
+    const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
+    const loadCatalog = async () => {
+      setCatalogState('loading')
+      try {
+        const resp = await ctx.connection.api.llm.models({})
+        if (resp.result.ok) {
+          setGroups(resp.result.value.groups)
+          setCatalogState('ready')
+        } else {
+          setCatalogState('error')
+        }
+      } catch {
+        setCatalogState('error')
       }
+    }
+    useEffect(() => {
+      void loadCatalog()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     return (
@@ -128,7 +140,9 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         <div style={styles.row}>
           <span style={styles.label}>优化用模型</span>
           {groups === null ? (
-            <span style={styles.hint}>{catalogError ? '模型目录加载失败,请刷新重试。' : '模型目录加载中…'}</span>
+            <span style={styles.hint}>
+              {catalogState === 'error' ? '模型目录加载失败,点右侧按钮重试。' : '模型目录加载中…'}
+            </span>
           ) : (
             <select
               style={styles.input}
@@ -147,6 +161,15 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
               ))}
             </select>
           )}
+          <button
+            type="button"
+            style={{ ...styles.refreshBtn, ...(catalogState === 'loading' ? { opacity: 0.45, cursor: 'default' } : {}) }}
+            disabled={catalogState === 'loading'}
+            title="重新拉取模型目录(新增提供方/模型后使用)"
+            onClick={() => void loadCatalog()}
+          >
+            ↻ 刷新
+          </button>
         </div>
 
         <div style={styles.row}>
