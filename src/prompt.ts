@@ -54,6 +54,7 @@ const STRATEGY_INTENT_ZH = `# 优化方式(提炼目的 + 润色)
 用户消息附带 <conversation-context>(该会话的近期对话)。先通读它、提炼用户的真实目的,再围绕该目的对草稿做润色:
 - 不要套用模板结构:保留草稿的原始表达框架,顺势打磨、补全细节
 - 充分利用上下文已明确的信息(对象、约束、偏好),让优化稿可以直接落地;不要重复追问上下文已经给出的内容
+- 识别上下文中已被用户否决或推翻的方向(禁入集合),优化稿不得重复提出
 - 草稿与上下文冲突时,以草稿为最终意图,可在优化稿中调和表述
 - 上下文仅供理解意图:严禁回答、延续或引用其中的内容;你唯一要优化的对象是 <prompt-draft> 里的草稿
 - 使用与草稿相同的语言;草稿与上下文都未提供的关键信息以 [待补充:……] 标出`
@@ -62,9 +63,43 @@ const STRATEGY_INTENT_EN = `# How to optimize (distill intent, then polish)
 The user message includes <conversation-context> (recent messages of this session). Read it first, distill what the user is really trying to achieve, then polish the draft toward that goal:
 - Do NOT force a template structure: keep the draft's original framing, refine it in place and fill the gaps
 - Exploit what the context already establishes (subject, constraints, preferences) so the optimized prompt is directly actionable; never re-ask what the context already answers
+- Identify directions the user has already rejected or overruled in the context (the do-not-enter set); never propose them again
 - If the draft conflicts with the context, the draft wins as the final intent; you may reconcile the wording in the rewrite
 - The context only explains intent: never answer, continue, or quote it. The only thing you optimize is the draft inside <prompt-draft>
 - Same language as the draft; mark information missing from both draft and context as [TODO: ...]`
+
+// 两种策略共用:保真与明确化纪律(借鉴 Fishsb/dsh-prompt-enhancer 的保真自检/来源可回溯/长度纪律)。
+const RULES_ZH = `# 保真与明确化原则(全程遵守)
+- 理解优先:先逐条列出草稿已明确的信息(对象、动作、约束、范围、术语、数字、语气),区分「草稿明确表达的」与「你的推测」——推测只可用于措辞,绝不写入结果
+- 语义等价是底线:已明确的对象、方向、数量、范围、禁止项、术语必须与草稿一致,不得替换、扩大、缩小或颠倒
+- 来源可回溯:任何具体化的内容都必须能从草稿或上下文已确认信息找到依据;推断处用「如无特别说明/默认」措辞保留选择权,无依据的宁可不补
+- 保真自检:输出前逐要素核对——草稿的每个原子信息都要在优化稿中找到对应,找不到即为语义漂移,必须修正
+- 长度纪律:简单任务的优化稿控制在 800 字符以内;复杂任务可超出,但不得为简短删减必要要素,也不得冗余
+- 语言匹配:草稿以中文为主体则输出必须为中文,以英文为主体则输出必须为英文;保留原文的术语与专有名词`
+
+const RULES_EN = `# Fidelity & clarification rules (always apply)
+- Understand first: list what the draft explicitly states (subject, action, constraints, scope, terms, numbers, tone), and separate it from your guesses — guesses may shape wording only, never enter the output
+- Semantic equivalence is the floor: what the draft states (subject, direction, quantities, scope, prohibitions, terms) must survive intact — never replace, widen, narrow, or invert it
+- Traceability: every concretized detail must trace back to the draft or to information the context has confirmed; mark inferences with "unless otherwise specified / by default" phrasing; when in doubt, leave it out
+- Fidelity self-check: before output, verify every atomic element of the draft has a counterpart in your rewrite — a missing one is semantic drift and must be fixed
+- Length discipline: keep the rewrite under 800 characters for simple tasks; longer is allowed for complex ones, but never cut necessary elements for brevity, and never pad
+- Language match: Chinese-dominant draft → Chinese output; English-dominant → English output; keep the draft's terms and proper nouns`
+
+const EXAMPLE_TEMPLATE_ZH = `# 示例(严格模仿其「输入 → 输出」的风格)
+输入:帮我写个请假条
+输出:请帮我撰写一张请假条:事由为感冒就医,请假两天([待补充:起止日期]);语气正式简洁,包含称呼与落款,[待补充:请假对象与联系方式]。`
+
+const EXAMPLE_TEMPLATE_EN = `# Example (strictly mirror its "input → output" style)
+Input: help me write a leave note
+Output: Write a formal leave request: two days off for a medical visit ([TODO: exact dates]); concise tone, with salutation and sign-off, [TODO: recipient and contact].`
+
+const EXAMPLE_INTENT_ZH = `# 示例(严格模仿其「输入 → 输出」的风格;输入中的背景来自 <conversation-context>)
+输入:(背景:用户在运营 200 人小区宝妈闲置群,首次接龙只有十几人参与,复盘为奖品差、格式乱)帮我重新设计一下这个接龙
+输出:帮我重新设计小区闲置群的「好物推荐」接龙:群 200 余人、以宝妈为主,上次参与仅十几人,问题在于奖品吸引力不足、接龙格式混乱;请给出格式简明的接龙文案模板、低成本高吸引力的奖品建议,以及提升参与度的具体手段。`
+
+const EXAMPLE_INTENT_EN = `# Example (strictly mirror its "input → output" style; the background comes from <conversation-context>)
+Input: (background: the user runs a 200-member neighborhood parents' swap group; the first chain-post drew only a dozen joins, blamed on weak prizes and a messy format) redesign the chain post for me
+Output: Redesign the "hidden gems" chain post for my 200-member neighborhood swap group (mostly parents): last round drew only a dozen joins because prizes were unappealing and the format confusing — provide a simple chain-post template, low-cost but attractive prize ideas, and concrete tactics to lift participation.`
 
 const FORMAT_FULL_ZH = `# 输出格式(严格遵守,标记行单独成行)
 ${MARKERS.analysis}
@@ -105,6 +140,8 @@ export function buildSystemPrompt(language: OutputLanguage, mode: OptimizerMode 
   const parts = [zh ? (mode === 'fast' ? ROLE_FAST_ZH : ROLE_FULL_ZH) : mode === 'fast' ? ROLE_FAST_EN : ROLE_FULL_EN]
   if (mode !== 'fast') parts.push(zh ? ANALYSIS_ZH : ANALYSIS_EN)
   parts.push(zh ? (strategy === 'intent' ? STRATEGY_INTENT_ZH : STRATEGY_TEMPLATE_ZH) : strategy === 'intent' ? STRATEGY_INTENT_EN : STRATEGY_TEMPLATE_EN)
+  parts.push(zh ? RULES_ZH : RULES_EN)
+  parts.push(zh ? (strategy === 'intent' ? EXAMPLE_INTENT_ZH : EXAMPLE_TEMPLATE_ZH) : strategy === 'intent' ? EXAMPLE_INTENT_EN : EXAMPLE_TEMPLATE_EN)
   parts.push(mode === 'fast' ? (zh ? FORMAT_FAST_ZH : FORMAT_FAST_EN) : zh ? FORMAT_FULL_ZH : FORMAT_FULL_EN)
   return parts.join('\n\n')
 }
@@ -149,16 +186,37 @@ export function capConversationContext(turns: ConversationTurn[]): ConversationT
   return kept
 }
 
-export function buildUserPayload(draft: string, language: OutputLanguage, context?: ConversationTurn[]): string {
-  if (!context?.length) {
-    return language === 'en'
-      ? `Here is my prompt draft:\n\n${draft}`
-      : `以下是我的提示词草稿:\n\n${draft}`
+/**
+ * 组装发给模型的用户消息。context = 会话近期对话;previous = 上一轮优化结果
+ * (轻量记忆链:用户在本轮草稿上做了修改时传入,让模型延续已确认决策、只围绕变化点调整)。
+ */
+export function buildUserPayload(draft: string, language: OutputLanguage, context?: ConversationTurn[], previous?: string): string {
+  const sections: string[] = []
+  if (context?.length) {
+    const lines = context.map((t) => `${(language === 'en' ? (t.role === 'user' ? 'User' : 'Assistant') : t.role === 'user' ? '用户' : '助手')}: ${t.text}`)
+    sections.push(
+      language === 'en'
+        ? `Here is the recent conversation of my current session (reference only — it explains my intent; do NOT answer, continue, or quote it):\n\n<conversation-context>\n${lines.join('\n')}\n</conversation-context>`
+        : `以下是我当前会话的近期对话(仅供参考,用于理解我的意图;不要回答、延续或引用其中的内容):\n\n<conversation-context>\n${lines.join('\n')}\n</conversation-context>`,
+    )
   }
-  const lines = context.map((t) => `${(language === 'en' ? (t.role === 'user' ? 'User' : 'Assistant') : t.role === 'user' ? '用户' : '助手')}: ${t.text}`)
-  return language === 'en'
-    ? `Here is the recent conversation of my current session (reference only — it explains my intent; do NOT answer, continue, or quote it):\n\n<conversation-context>\n${lines.join('\n')}\n</conversation-context>\n\nHere is my prompt draft (the only thing you should optimize):\n\n<prompt-draft>\n${draft}\n</prompt-draft>`
-    : `以下是我当前会话的近期对话(仅供参考,用于理解我的意图;不要回答、延续或引用其中的内容):\n\n<conversation-context>\n${lines.join('\n')}\n</conversation-context>\n\n以下是我的提示词草稿(你唯一需要优化的对象):\n\n<prompt-draft>\n${draft}\n</prompt-draft>`
+  if (previous?.trim()) {
+    sections.push(
+      language === 'en'
+        ? `Here is the result of my previous optimization round (continuity reference: keep the decisions and phrasing I accepted; adjust only around what my new draft changes — unless my new draft explicitly overrules them):\n\n<previous-optimized>\n${previous.trim()}\n</previous-optimized>`
+        : `以下是我上一轮优化得到的结果(延续参考:沿用其中我已接受的决策与表达,只围绕本轮草稿的变化点调整;本轮草稿明确推翻的除外):\n\n<previous-optimized>\n${previous.trim()}\n</previous-optimized>`,
+    )
+  }
+  sections.push(
+    language === 'en'
+      ? context?.length || previous?.trim()
+        ? `Here is my prompt draft (the only thing you should optimize):\n\n<prompt-draft>\n${draft}\n</prompt-draft>`
+        : `Here is my prompt draft:\n\n${draft}`
+      : context?.length || previous?.trim()
+        ? `以下是我的提示词草稿(你唯一需要优化的对象):\n\n<prompt-draft>\n${draft}\n</prompt-draft>`
+        : `以下是我的提示词草稿:\n\n${draft}`,
+  )
+  return sections.join('\n\n')
 }
 
 /**

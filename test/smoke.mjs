@@ -496,4 +496,26 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 17b 关闭后忽略上下文')
 }
 
+// 18. 轻量记忆链:previous 进入模型消息(上下文之后、草稿之前);超长截断
+{
+  const { handler, getOptions } = await setup()
+  const res = await call(handler, {
+    text: '改过的草稿',
+    provider: 'p',
+    model: 'm',
+    context: [{ role: 'user', text: '前文' }],
+    previous: '上一轮的优化结果',
+  })
+  doneOf(res)
+  const sent = getOptions().messages[0].content[0].text
+  assert.match(sent, /<previous-optimized>\n上一轮的优化结果\n<\/previous-optimized>/)
+  assert.ok(sent.indexOf('previous-optimized') < sent.indexOf('<prompt-draft>'), 'previous 必须置于草稿之前')
+
+  const big = await setup()
+  await call(big.handler, { text: 'x', provider: 'p', model: 'm', previous: '长'.repeat(3000) })
+  const sentBig = big.getOptions().messages[0].content[0].text
+  assert.ok(sentBig.length < 3000, 'previous 应被截断到 1500 字符级')
+  console.log('✓ 18 记忆链进入模型消息')
+}
+
 console.log('\nsmoke: all passed')

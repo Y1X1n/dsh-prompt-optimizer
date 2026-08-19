@@ -5,7 +5,7 @@
  * 运行:先 `npm run build`,再 `node test/controller.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { createOptimizerController } from '../lib/controller.js'
+import { createOptimizerController, splitCommandPrefix } from '../lib/controller.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const enc = new TextEncoder()
@@ -315,6 +315,50 @@ const DONE = {
     },
   )
   console.log('✓ c12 关闭上下文跳过查询')
+}
+
+// c13. 斜杠命令前缀拆分:只优化正文,前缀记入 last;路径与普通文本不拆
+{
+  assert.deepEqual(splitCommandPrefix('/goal 帮我写个目标'), { prefix: '/goal', body: '帮我写个目标' })
+  assert.deepEqual(splitCommandPrefix('/goal'), { body: '/goal' }, '只敲命令没有正文时不拆')
+  assert.deepEqual(splitCommandPrefix('/path/to/file 帮我看看'), { body: '/path/to/file 帮我看看' }, '路径不是命令')
+  assert.deepEqual(splitCommandPrefix('  普通草稿  '), { body: '普通草稿' })
+
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('/goal 帮我写个请假条', 's1')
+      assert.equal(calls[0].body.text, '帮我写个请假条', '发给 Host 的应只有正文')
+      assert.equal(c.getSnapshot().last.prefix, '/goal', 'last 应记住前缀供替换时拼回')
+    },
+  )
+  console.log('✓ c13 斜杠命令前缀')
+}
+
+// c14. 轻量记忆链:同会话改稿再优化带上轮结果;同文 retry / 首轮不带
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('原始草稿', 's1')
+      assert.equal(calls[0].body.previous, undefined, '首轮不带 previous')
+      // 同文 retry:重新生成,不是迭代
+      c.retry()
+      await sleep(10)
+      assert.equal(calls[1].body.previous, undefined, '同文 retry 不带 previous')
+      // 用户在优化产物上修改后再优化:带上一轮结果
+      await c.optimize('优化后的提示词,再补上对空输入的处理', 's1')
+      assert.equal(calls[2].body.previous, '优化后的提示词', '改稿再优化应带上轮结果')
+      // 换会话:不带
+      await c.optimize('另一会话的草稿', 's2')
+      assert.equal(calls[3].body.previous, undefined, '跨会话不带 previous')
+    },
+  )
+  console.log('✓ c14 轻量记忆链')
 }
 
 console.log('\ncontroller: all passed')

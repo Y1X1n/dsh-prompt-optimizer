@@ -20,8 +20,8 @@ export interface OptimizerState {
   result: OptimizeResult | null
   /** 流式进行中的分段实况,仅 loading 期间有值。 */
   live: { analysis: string; optimized: string } | null
-  /** 最近一次成功发起的请求,供「重新优化」复用。 */
-  last: { text: string; sessionId: SessionId } | null
+  /** 最近一次成功发起的请求,供「重新优化」复用;prefix 为斜杠命令前缀(替换时拼回)。 */
+  last: { text: string; sessionId: SessionId; prefix?: string } | null
   /** 「替换输入框」后的撤回依据:替换前的原文 + 替换后的文本(用于检测用户编辑)。 */
   applied: { backup: string; text: string } | null
 }
@@ -29,6 +29,17 @@ export interface OptimizerState {
 const ROUTE = '/dsh-prompt-optimizer/optimize'
 
 const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, live: null, last: null, applied: null }
+
+/**
+ * 拆斜杠命令前缀:「/goal 帮我……」只优化正文,替换时拼回前缀,避免命令词被改写。
+ * 正文为空(只敲了命令)或不像命令(如 /path/to/file)时不拆,整段按普通文本处理。
+ */
+export function splitCommandPrefix(text: string): { prefix?: string; body: string } {
+  const trimmed = text.trim()
+  const match = /^(\/[A-Za-z][\w-]*)\s+([\s\S]+)$/.exec(trimmed)
+  if (!match || !match[2].trim()) return { body: trimmed }
+  return { prefix: match[1], body: match[2].trim() }
+}
 
 /** 摊平 content blocks 为纯文本(图片等非文本块对优化意图无帮助,忽略)。 */
 function flattenText(content: unknown): string {
@@ -102,14 +113,21 @@ export function createOptimizerController(
   }
 
   async function optimize(text: string, sessionId: SessionId) {
-    const draft = text.trim()
+    // 斜杠命令只优化正文;前缀记入 last,「替换输入框」时拼回(ResultDock 负责)。
+    const { prefix, body: draft } = splitCommandPrefix(text)
     if (!draft || state.status === 'loading') return
+    // 轻量记忆链:同一会话已有优化结果、且本轮草稿较上轮发生了变化(用户在我们
+    // 的产物上继续编辑)时,把上轮结果作为延续参考传给模型;发送即关闭面板会清掉
+    // result,记忆链自然归零。同文重试(retry)不带——那是重新生成,不是迭代。
+    // 注意:必须在下面 set(loading) 之前读旧 state。
+    const previous =
+      state.result && state.last?.sessionId === sessionId && state.last.text !== draft ? state.result.optimized : undefined
     abort?.abort()
     clearLiveTimer()
     liveRaw = ''
     const controller = new AbortController()
     abort = controller
-    set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId }, applied: null })
+    set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId, prefix }, applied: null })
     try {
       // 复用当前会话的模型选择(每次点击实时查询,会话里换模型立即生效);
       // 查询失败时交给 Host 端回退解析。设置里固定了模型时跳过:Host 端
@@ -149,7 +167,7 @@ export function createOptimizerController(
       const resp = await fetch(ROUTE, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: draft, provider: selection?.provider, model: selection?.model, reasoningEffort: selection?.reasoningEffort, context }),
+        body: JSON.stringify({ text: draft, provider: selection?.provider, model: selection?.model, reasoningEffort: selection?.reasoningEffort, context, previous }),
         signal: controller.signal,
       })
       // 预校验失败(400/405/409/413/502)仍是普通 JSON;成功则进入 SSE 流。

@@ -152,8 +152,20 @@ export function createResultDock(controller: OptimizerController) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draft, applied, owns, state.status, running, queued])
 
+    // loading 期间的耗时读数:进入 loading 起每秒刷新,离开即停。
+    const [elapsed, setElapsed] = useState(0)
+    useEffect(() => {
+      if (state.status !== 'loading') return
+      const started = Date.now()
+      setElapsed(0)
+      const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
+      return () => clearInterval(timer)
+    }, [state.status])
+
     if (!owns) return null
     const { result } = state
+    // 阶段提示:首 token 前(等待响应)→ 分析诊断 → 输出优化稿,跟随流式段落推进。
+    const stage = state.live?.optimized ? '正在输出优化稿' : state.live?.analysis ? '正在分析诊断' : '等待模型响应'
 
     const onCopy = async () => {
       if (!result) return
@@ -163,8 +175,11 @@ export function createResultDock(controller: OptimizerController) {
     const onReplace = () => {
       if (!result) return
       // 面板保持打开进入「已替换」态,撤回依据 = 替换前的原文。
-      controller.markApplied({ backup: props.input.draft, text: result.optimized })
-      props.inputActions.setDraft(result.optimized)
+      // 斜杠命令前缀拼回:优化只针对正文,命令词原样保留;
+      // applied.text 必须是替换后的完整草稿(含前缀),否则撤回失效检测会误判为用户编辑。
+      const nextDraft = state.last?.prefix ? `${state.last.prefix} ${result.optimized}` : result.optimized
+      controller.markApplied({ backup: props.input.draft, text: nextDraft })
+      props.inputActions.setDraft(nextDraft)
     }
     const onUndo = () => {
       if (!applied) return
@@ -192,7 +207,7 @@ export function createResultDock(controller: OptimizerController) {
           <>
             <div style={styles.loading}>
               <SparkleIcon spinning />
-              正在分析并优化,请稍候…(Esc 取消)
+              {stage}…({elapsed}s,Esc 取消)
             </div>
             {state.live && (state.live.analysis || state.live.optimized) && (
               <div style={styles.body}>

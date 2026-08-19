@@ -61,6 +61,7 @@ interface OptimizeRequestBody {
   model?: unknown
   reasoningEffort?: unknown
   context?: unknown
+  previous?: unknown
 }
 
 function asOptionalString(value: unknown): string | undefined {
@@ -312,10 +313,13 @@ export function apply(ctx: Context, config: Config) {
 
         // 设置里关掉「携带上下文」时,即使客户端带了 context 也忽略(Host 侧硬开关)。
         const context = cfg.includeContext === false ? undefined : parseContextInput(body.context)
+        // 轻量记忆链:上一轮优化结果,截断到 1500 字符(它只是延续参考,不是优化对象)。
+        const previousRaw = asOptionalString(body.previous)
+        const previous = previousRaw ? (previousRaw.length > 1500 ? `${previousRaw.slice(0, 1500)}…` : previousRaw) : undefined
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
           role: 'user',
-          content: [{ type: 'text', text: buildUserPayload(text, language, context) }],
+          content: [{ type: 'text', text: buildUserPayload(text, language, context, previous) }],
           source: { kind: 'plugin', plugin: name },
         }
         // 策略分叉:有上下文走「提炼目的 + 润色」(不套模板),无上下文走「结构模板」改写。

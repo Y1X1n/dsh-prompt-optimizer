@@ -150,4 +150,41 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTo
   console.log('✓ p10 策略分叉')
 }
 
+// 11. 保真纪律与示例:两种策略都含保真自检/来源可回溯/长度纪律;禁入集合仅 intent
+{
+  const tpl = buildSystemPrompt('zh', 'full', 'template')
+  const intent = buildSystemPrompt('zh', 'full', 'intent')
+  for (const sys of [tpl, intent]) {
+    assert.match(sys, /保真自检/, '应含保真自检')
+    assert.match(sys, /来源可回溯/, '应含来源可回溯')
+    assert.match(sys, /长度纪律/, '应含长度纪律')
+    assert.match(sys, /# 示例/, '应含 few-shot 示例')
+  }
+  assert.match(intent, /禁入集合/, 'intent 应含禁入集合')
+  assert.ok(!tpl.includes('禁入集合'), 'template 不应含禁入集合')
+  // 快速模式同样携带纪律与示例
+  const fast = buildSystemPrompt('zh', 'fast', 'template')
+  assert.match(fast, /保真自检/)
+  assert.match(fast, /# 示例/)
+  console.log('✓ p11 保真纪律与示例')
+}
+
+// 12. 记忆链载荷:previous 段在上下文之后、草稿之前;无 previous 时不出现
+{
+  const withPrev = buildUserPayload('新草稿', 'zh', undefined, '上一轮的优化结果')
+  assert.match(withPrev, /<previous-optimized>\n上一轮的优化结果\n<\/previous-optimized>/)
+  assert.ok(withPrev.indexOf('previous-optimized') < withPrev.indexOf('<prompt-draft>'), 'previous 必须置于草稿之前')
+  assert.match(withPrev, /只围绕本轮草稿的变化点调整/)
+
+  const noPrev = buildUserPayload('草稿', 'zh')
+  assert.ok(!noPrev.includes('previous-optimized'))
+  assert.equal(noPrev, '以下是我的提示词草稿:\n\n草稿', '无上下文无 previous 时保持旧格式')
+
+  // previous 与上下文共存:context → previous → draft 的顺序
+  const both = buildUserPayload('草稿', 'zh', [{ role: 'user', text: '前文' }], '上轮结果')
+  assert.ok(both.indexOf('conversation-context') < both.indexOf('previous-optimized'))
+  assert.ok(both.indexOf('previous-optimized') < both.indexOf('<prompt-draft>'))
+  console.log('✓ p12 记忆链载荷')
+}
+
 console.log('\nprompt: all passed')
