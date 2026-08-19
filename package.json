@@ -20,7 +20,7 @@
     "prepare": "node scripts/build.mjs",
     "sync:types": "node scripts/sync-types.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs && node test/prompt.test.mjs"
   },
   "dsh": {
     "bundle": {

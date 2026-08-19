@@ -3,6 +3,18 @@ import { mkdir } from 'node:fs/promises'
 
 await mkdir('lib', { recursive: true })
 
+// 元提示词与输出解析:独立产物,供单元测试(以及潜在的第三方复用)直接引用。
+await build({
+  entryPoints: ['src/prompt.ts'],
+  outfile: 'lib/prompt.js',
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node18',
+  packages: 'external',
+  logLevel: 'info',
+})
+
 // Host 半:ESM;@deepseek-ai/* 与 node 内建模块保持外部,由 profile 的 node_modules 解析。
 await build({
   entryPoints: ['src/index.ts'],
@@ -40,4 +52,4 @@ await build({
   logLevel: 'info',
 })
 
-console.log('[build] lib/index.js + lib/client.js done')
+console.log('[build] lib/index.js + lib/client.js + lib/prompt.js done')

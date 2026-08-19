@@ -73,37 +73,40 @@ export interface OptimizerOutput {
   wellFormed: boolean
 }
 
+/** 解析时容忍标记尖括号内的空白变体(模型偶尔输出 `<<< ANALYSIS >>>`)。 */
+function findMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', fromIndex = 0): { index: number; length: number } | null {
+  const re = new RegExp(`<<<\\s*${word}\\s*>>>`, 'g')
+  re.lastIndex = fromIndex
+  const match = re.exec(text)
+  return match ? { index: match.index, length: match[0].length } : null
+}
+
 /**
  * 解析模型输出中的标记段落。模型不遵守格式时降级:
  * 找到 OPTIMIZED 则其余归 analysis;两个标记都没有则全文作为 optimized。
  */
 export function parseOptimizerOutput(raw: string): OptimizerOutput {
   const text = raw.trim()
-  const aIdx = text.indexOf(MARKERS.analysis)
-  const oIdx = text.indexOf(MARKERS.optimized)
+  const a = findMarker(text, 'ANALYSIS')
+  const o = findMarker(text, 'OPTIMIZED')
 
-  if (aIdx === -1 && oIdx === -1) {
+  if (!a && !o) {
     return { analysis: '', optimized: text, wellFormed: false }
   }
 
   let analysis = ''
   let optimized = ''
 
-  if (aIdx !== -1 && (oIdx === -1 || aIdx < oIdx)) {
-    const end = oIdx !== -1 ? oIdx : text.length
-    analysis = text.slice(aIdx + MARKERS.analysis.length, end).trim()
+  if (a && (!o || a.index < o.index)) {
+    analysis = text.slice(a.index + a.length, o ? o.index : text.length).trim()
   }
-  if (oIdx !== -1) {
-    const eIdx = text.indexOf(MARKERS.end, oIdx + MARKERS.optimized.length)
-    const end = eIdx !== -1 ? eIdx : text.length
-    optimized = text.slice(oIdx + MARKERS.optimized.length, end).trim()
-  }
-  if (!optimized && oIdx !== -1) {
-    optimized = text.slice(oIdx + MARKERS.optimized.length).trim()
+  if (o) {
+    const e = findMarker(text, 'END', o.index + o.length)
+    optimized = text.slice(o.index + o.length, e ? e.index : text.length).trim()
   }
   return {
     analysis,
     optimized: optimized || text,
-    wellFormed: aIdx !== -1 && oIdx !== -1,
+    wellFormed: Boolean(a && o),
   }
 }
