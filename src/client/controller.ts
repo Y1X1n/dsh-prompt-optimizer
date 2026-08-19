@@ -20,11 +20,13 @@ export interface OptimizerState {
   live: { analysis: string; optimized: string } | null
   /** 最近一次成功发起的请求,供「重新优化」复用。 */
   last: { text: string; sessionId: SessionId } | null
+  /** 「替换输入框」后的撤回依据:替换前的原文 + 替换后的文本(用于检测用户编辑)。 */
+  applied: { backup: string; text: string } | null
 }
 
 const ROUTE = '/dsh-prompt-optimizer/optimize'
 
-const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, live: null, last: null }
+const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, live: null, last: null, applied: null }
 
 /**
  * 按钮(conversation.input.right)与结果面板(conversation.input.dock)
@@ -61,7 +63,7 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
     liveRaw = ''
     const controller = new AbortController()
     abort = controller
-    set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId } })
+    set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId }, applied: null })
     try {
       // 复用当前会话的模型选择(每次点击实时查询,会话里换模型立即生效);
       // 查询失败时交给 Host 端回退解析。设置里固定了模型时跳过:Host 端
@@ -165,6 +167,12 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
     optimize,
     retry() {
       if (state.last) void optimize(state.last.text, state.last.sessionId)
+    },
+    markApplied(applied: { backup: string; text: string }) {
+      set({ applied })
+    },
+    clearApplied() {
+      if (state.applied) set({ applied: null })
     },
     close() {
       abort?.abort()

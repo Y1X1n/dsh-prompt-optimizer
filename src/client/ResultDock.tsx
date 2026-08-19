@@ -91,6 +91,11 @@ const styles = {
     color: 'var(--dsw-alias-label-primary-inverted, #fff)',
   } as const,
   errorText: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', whiteSpace: 'pre-wrap' } as const,
+  appliedHint: {
+    alignSelf: 'center',
+    fontSize: 12,
+    color: 'var(--dsw-alias-state-success-primary, #2da44e)',
+  } as const,
   warnText: {
     marginTop: 8,
     fontSize: 12,
@@ -124,6 +129,14 @@ export function createResultDock(controller: OptimizerController) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [owns])
 
+    // 撤回自动失效:替换后用户手动改过草稿(内容不再等于替换文本),
+    // 撤回会覆盖用户编辑,此时撤掉撤回入口。
+    const applied = state.applied
+    useEffect(() => {
+      if (applied && props.input.draft !== applied.text) controller.clearApplied()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.input.draft, applied])
+
     if (!owns) return null
     const { result } = state
 
@@ -134,8 +147,14 @@ export function createResultDock(controller: OptimizerController) {
     }
     const onReplace = () => {
       if (!result) return
+      // 面板保持打开进入「已替换」态,撤回依据 = 替换前的原文。
+      controller.markApplied({ backup: props.input.draft, text: result.optimized })
       props.inputActions.setDraft(result.optimized)
-      controller.close()
+    }
+    const onUndo = () => {
+      if (!applied) return
+      props.inputActions.setDraft(applied.backup)
+      controller.clearApplied()
     }
 
     return (
@@ -215,15 +234,29 @@ export function createResultDock(controller: OptimizerController) {
               )}
             </div>
             <div style={styles.actions}>
-              <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
-                替换输入框
-              </button>
-              <button type="button" style={styles.actionBtn} onClick={onCopy}>
-                {copied ? '已复制 ✓' : '复制'}
-              </button>
-              <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
-                重新优化
-              </button>
+              {applied ? (
+                <>
+                  <span style={styles.appliedHint}>已替换到输入框 ✓</span>
+                  <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onUndo}>
+                    撤回
+                  </button>
+                  <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+                    关闭
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
+                    替换输入框
+                  </button>
+                  <button type="button" style={styles.actionBtn} onClick={onCopy}>
+                    {copied ? '已复制 ✓' : '复制'}
+                  </button>
+                  <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                    重新优化
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}
