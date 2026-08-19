@@ -1,5 +1,6 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import { parsePartialOptimizerOutput } from '../prompt.js'
 
 export interface OptimizeResult {
   analysis: string
@@ -15,13 +16,15 @@ export interface OptimizerState {
   status: 'idle' | 'loading' | 'done' | 'error'
   error: string | null
   result: OptimizeResult | null
+  /** 流式进行中的分段实况,仅 loading 期间有值。 */
+  live: { analysis: string; optimized: string } | null
   /** 最近一次成功发起的请求,供「重新优化」复用。 */
   last: { text: string; sessionId: SessionId } | null
 }
 
 const ROUTE = '/dsh-prompt-optimizer/optimize'
 
-const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, last: null }
+const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, live: null, last: null }
 
 /**
  * 按钮(conversation.input.right)与结果面板(conversation.input.dock)
@@ -43,7 +46,7 @@ export function createOptimizerController(ctx: ClientContext) {
     abort?.abort()
     const controller = new AbortController()
     abort = controller
-    set({ open: true, status: 'loading', error: null, last: { text: draft, sessionId } })
+    set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId } })
     try {
       // 复用当前会话的模型选择(每次点击实时查询,会话里换模型立即生效);
       // 查询失败时交给 Host 端回退解析。
@@ -68,26 +71,60 @@ export function createOptimizerController(ctx: ClientContext) {
         body: JSON.stringify({ text: draft, provider, model, reasoningEffort }),
         signal: controller.signal,
       })
-      const data = await resp.json().catch(() => null)
-      if (controller.signal.aborted) return
-      if (data?.ok) {
-        set({
-          status: 'done',
-          result: {
-            analysis: data.analysis ?? '',
-            optimized: data.optimized ?? '',
-            wellFormed: data.wellFormed !== false,
-            truncated: data.truncated === true,
-            provider: String(data.provider ?? ''),
-            model: String(data.model ?? ''),
-          },
-        })
-      } else {
-        set({ status: 'error', error: String(data?.error ?? `请求失败(HTTP ${resp.status})`) })
+      // 预校验失败(400/405/409/413/502)仍是普通 JSON;成功则进入 SSE 流。
+      if (!resp.ok || !(resp.headers.get('content-type') ?? '').includes('text/event-stream')) {
+        const data = await resp.json().catch(() => null)
+        if (!controller.signal.aborted) {
+          set({ status: 'error', live: null, error: String(data?.error ?? `请求失败(HTTP ${resp.status})`) })
+        }
+        return
+      }
+      const reader = resp.body?.getReader()
+      if (!reader) throw new Error('当前环境不支持流式响应')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let raw = ''
+      let terminal = false
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          const line = frame.split('\n').find((l) => l.startsWith('data:'))
+          if (!line) continue
+          const event = JSON.parse(line.slice(5).trim()) as Record<string, unknown>
+          if (event.type === 'delta') {
+            raw += String(event.text ?? '')
+            set({ live: parsePartialOptimizerOutput(raw) })
+          } else if (event.type === 'done') {
+            terminal = true
+            set({
+              status: 'done',
+              live: null,
+              result: {
+                analysis: String(event.analysis ?? ''),
+                optimized: String(event.optimized ?? ''),
+                wellFormed: event.wellFormed !== false,
+                truncated: event.truncated === true,
+                provider: String(event.provider ?? ''),
+                model: String(event.model ?? ''),
+              },
+            })
+          } else if (event.type === 'error') {
+            terminal = true
+            set({ status: 'error', live: null, error: String(event.error ?? '未知错误') })
+          }
+        }
+      }
+      if (!terminal && !controller.signal.aborted) {
+        set({ status: 'error', live: null, error: '连接中断:响应流提前结束' })
       }
     } catch (cause) {
       if (controller.signal.aborted) return
-      set({ status: 'error', error: cause instanceof Error ? cause.message : String(cause) })
+      set({ status: 'error', live: null, error: cause instanceof Error ? cause.message : String(cause) })
     }
   }
 

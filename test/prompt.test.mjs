@@ -2,7 +2,7 @@
  * prompt.ts 标记解析的单元测试。运行:先 `npm run build`,再 `node test/prompt.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { parseOptimizerOutput } from '../lib/prompt.js'
+import { parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
 
 // 1. 标准标记:正常分段
 {
@@ -50,6 +50,21 @@ import { parseOptimizerOutput } from '../lib/prompt.js'
   assert.equal(out.optimized, '正文')
   assert.equal(out.analysis, '')
   console.log('✓ p5 乱序标记')
+}
+
+// 6. 流式实况:不做整文兜底,只返回标记已确认的段落
+{
+  // 还没出现任何标记时,两段都为空(不能把含标记的原文误当优化结果)
+  assert.deepEqual(parsePartialOptimizerOutput('<<<ANAL'), { analysis: '', optimized: '' })
+  // 只有 ANALYSIS:analysis 增长,optimized 仍为空
+  const mid = parsePartialOptimizerOutput('<<<ANALYSIS>>>\n分析到一半')
+  assert.equal(mid.analysis, '分析到一半')
+  assert.equal(mid.optimized, '')
+  // OPTIMIZED 出现后:analysis 定格,optimized 开始增长
+  const late = parsePartialOptimizerOutput('<<<ANALYSIS>>>\n分析完\n<<<OPTIMIZED>>>\n优化到一半')
+  assert.equal(late.analysis, '分析完')
+  assert.equal(late.optimized, '优化到一半')
+  console.log('✓ p6 流式实况解析')
 }
 
 console.log('\nprompt: all passed')

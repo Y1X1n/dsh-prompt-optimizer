@@ -154,10 +154,30 @@ export function createResultDock(controller: OptimizerController) {
         </div>
 
         {state.status === 'loading' && (
-          <div style={styles.loading}>
-            <SparkleIcon spinning />
-            正在分析并优化,请稍候…(Esc 取消)
-          </div>
+          <>
+            <div style={styles.loading}>
+              <SparkleIcon spinning />
+              正在分析并优化,请稍候…(Esc 取消)
+            </div>
+            {state.live && (state.live.analysis || state.live.optimized) && (
+              <div style={styles.body}>
+                {state.live.analysis && (
+                  <>
+                    <div style={styles.sectionTitle}>分析诊断</div>
+                    <pre style={styles.pre}>{state.live.analysis}</pre>
+                  </>
+                )}
+                {state.live.optimized && (
+                  <>
+                    <div style={styles.sectionTitle}>优化结果</div>
+                    <div style={styles.optimizedBox}>
+                      <pre style={styles.pre}>{state.live.optimized}</pre>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {state.status === 'error' && (

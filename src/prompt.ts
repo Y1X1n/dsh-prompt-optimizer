@@ -110,3 +110,22 @@ export function parseOptimizerOutput(raw: string): OptimizerOutput {
     wellFormed: Boolean(a && o),
   }
 }
+
+/**
+ * 流式进行中的容错解析:只返回标记已确认的段落,不做整文兜底
+ * (兜底会把含标记的原文误当优化结果显示出来)。两个段落都可能随 delta 增长。
+ */
+export function parsePartialOptimizerOutput(raw: string): { analysis: string; optimized: string } {
+  const a = findMarker(raw, 'ANALYSIS')
+  const o = findMarker(raw, 'OPTIMIZED')
+  let analysis = ''
+  let optimized = ''
+  if (a && (!o || a.index < o.index)) {
+    analysis = raw.slice(a.index + a.length, o ? o.index : raw.length).trim()
+  }
+  if (o) {
+    const e = findMarker(raw, 'END', o.index + o.length)
+    optimized = raw.slice(o.index + o.length, e ? e.index : raw.length).trim()
+  }
+  return { analysis, optimized }
+}

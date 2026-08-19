@@ -67,9 +67,10 @@ async function readJsonBody(req: import('node:http').IncomingMessage): Promise<u
   return JSON.parse(Buffer.concat(chunks).toString('utf-8'))
 }
 
-/** 折叠流式输出为纯文本;finish 为 error/aborted 时抛出,max-tokens 标记截断。 */
+/** 折叠流式输出为纯文本;finish 为 error/aborted 时抛出,max-tokens 标记截断。onDelta 逐段回调增量(用于 SSE 透传)。 */
 async function collectText(
   stream: AsyncIterable<import('@deepseek-ai/dsh-llm').StreamChunk>,
+  onDelta?: (text: string) => void,
 ): Promise<{ text: string; truncated: boolean }> {
   let deltas = ''
   const blocks = new Map<number, string>()
@@ -78,6 +79,7 @@ async function collectText(
     switch (chunk.type) {
       case 'text-delta':
         deltas += chunk.text
+        onDelta?.(chunk.text)
         break
       case 'block-end':
         if (chunk.block.type === 'text') blocks.set(chunk.index, chunk.block.text)
@@ -220,9 +222,28 @@ export function apply(ctx: Context, config: Config) {
           options.reasoningEffort = reasoningEffort as GenerateOptions['reasoningEffort']
         }
 
-        const raw = await collectText(ctx.llm.stream(options))
-        const parsed = parseOptimizerOutput(raw.text)
-        writeJson(res, 200, { ok: true, ...parsed, truncated: raw.truncated, provider, model })
+        // 阶段二:流式响应。delta 逐段推送(SSE),done 携带最终解析结果;
+        // 此阶段响应头已发出,模型错误也走事件通道,无法再改状态码。
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache, no-transform',
+          'x-accel-buffering': 'no',
+        })
+        const send = (event: Record<string, unknown>) => {
+          if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`)
+        }
+        try {
+          const raw = await collectText(ctx.llm.stream(options), (delta) => send({ type: 'delta', text: delta }))
+          const parsed = parseOptimizerOutput(raw.text)
+          send({ type: 'done', ...parsed, truncated: raw.truncated, provider, model })
+        } catch (error) {
+          if (!abort.signal.aborted) {
+            const message = error instanceof Error ? error.message : String(error)
+            console.error(`[${name}] optimize failed:`, error)
+            send({ type: 'error', error: message })
+          }
+        }
+        res.end()
       } catch (error) {
         if (abort.signal.aborted) return // 客户端已断开,无需应答
         const message = error instanceof Error ? error.message : String(error)

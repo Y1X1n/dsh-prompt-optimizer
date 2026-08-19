@@ -28,15 +28,22 @@ function makeReq(body, method = 'POST') {
 async function call(handler, body, method) {
   const res = {
     status: 0,
+    headers: {},
     body: '',
     writableEnded: false,
+    destroyed: false,
     on() {},
-    writeHead(status) {
+    writeHead(status, headers) {
       res.status = status
+      res.headers = headers ?? {}
       return res
     },
+    write(chunk) {
+      res.body += chunk
+      return true
+    },
     end(payload) {
-      res.body = payload ?? ''
+      if (payload) res.body += payload
       res.writableEnded = true
     },
   }
@@ -46,6 +53,27 @@ async function call(handler, body, method) {
       : makeReq(body, method)
   await handler(req, res)
   return res
+}
+
+/** 解析 SSE 响应体中的全部事件帧。 */
+function sseEvents(res) {
+  return res.body
+    .split('\n\n')
+    .filter(Boolean)
+    .map((frame) => {
+      const line = frame.split('\n').find((l) => l.startsWith('data:'))
+      return line ? JSON.parse(line.slice(5).trim()) : null
+    })
+    .filter(Boolean)
+}
+
+/** 成功响应(200 + SSE)中的 done 事件,等价于改版前的 JSON body。 */
+function doneOf(res) {
+  assert.equal(res.status, 200)
+  assert.match(String(res.headers['content-type']), /text\/event-stream/)
+  const done = sseEvents(res).find((e) => e.type === 'done')
+  assert.ok(done, '应收到 done 事件')
+  return done
 }
 
 async function setup({ config = {}, llmOverrides = {} } = {}) {
@@ -77,9 +105,8 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 {
   const { handler } = await setup()
   const res = await call(handler, { text: '帮我看看这段代码', provider: 'session-p', model: 'session-m' })
-  assert.equal(res.status, 200)
-  const data = JSON.parse(res.body)
-  assert.equal(data.ok, true)
+  const data = doneOf(res)
+  assert.ok(sseEvents(res).some((e) => e.type === 'delta'), '应先推送 delta 事件')
   assert.match(data.analysis, /目标清晰度/)
   assert.match(data.optimized, /资深代码评审/)
   assert.ok(!data.optimized.includes('ANALYSIS'), 'optimized 不应包含标记内容')
@@ -92,7 +119,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 {
   const { handler } = await setup({ config: { model: 'cfg-p/cfg-m' } })
   const res = await call(handler, { text: 'x', provider: 'session-p', model: 'session-m' })
-  const data = JSON.parse(res.body)
+  const data = doneOf(res)
   assert.equal(data.provider, 'cfg-p')
   assert.equal(data.model, 'cfg-m')
   console.log('✓ 2 设置固定模型优先')
@@ -102,7 +129,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 {
   const { handler } = await setup({ config: { model: '' } })
   const res = await call(handler, { text: 'x', provider: 'session-p', model: 'session-m' })
-  const data = JSON.parse(res.body)
+  const data = doneOf(res)
   assert.equal(data.provider, 'session-p')
   assert.equal(data.model, 'session-m')
   console.log('✓ 2b 空字符串配置视为未设置')
@@ -112,7 +139,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 {
   const { handler } = await setup({ config: { model: 'cfg-p-only' } })
   const res = await call(handler, { text: 'x', provider: 'session-p', model: 'session-m' })
-  const data = JSON.parse(res.body)
+  const data = doneOf(res)
   assert.equal(data.provider, 'session-p')
   assert.equal(data.model, 'session-m')
   console.log('✓ 2c 畸形固定值回落会话')
@@ -122,8 +149,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 {
   const { handler } = await setup()
   const res = await call(handler, { text: 'x' })
-  const data = JSON.parse(res.body)
-  assert.equal(data.ok, true)
+  const data = doneOf(res)
   assert.equal(data.provider, 'deepseek-official')
   assert.equal(data.model, 'deepseek-chat')
   console.log('✓ 3 回退到首个可用路由')
@@ -161,7 +187,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 5b 畸形 JSON → 400,超大请求体 → 413')
 }
 
-// 6. 模型终态错误 → 502
+// 6. 模型终态错误 → SSE error 事件(进入流式阶段后无法再改状态码)
 {
   const { handler } = await setup({
     llmOverrides: {
@@ -171,9 +197,11 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     },
   })
   const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
-  assert.equal(res.status, 502)
-  assert.match(JSON.parse(res.body).error, /API key is invalid/)
-  console.log('✓ 6 模型错误透传 → 502')
+  assert.equal(res.status, 200)
+  const err = sseEvents(res).find((e) => e.type === 'error')
+  assert.ok(err, '应收到 error 事件')
+  assert.match(err.error, /API key is invalid/)
+  console.log('✓ 6 模型错误 → SSE error 事件')
 }
 
 // 7. max-tokens 截断:正常返回内容并带 truncated 标记
@@ -187,9 +215,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     },
   })
   const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
-  const data = JSON.parse(res.body)
-  assert.equal(res.status, 200)
-  assert.equal(data.ok, true)
+  const data = doneOf(res)
   assert.equal(data.truncated, true)
   assert.match(data.optimized, /截断/)
   console.log('✓ 7 max-tokens 截断标记')
