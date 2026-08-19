@@ -27,6 +27,18 @@ await build({
   logLevel: 'info',
 })
 
+// Client controller:独立 ESM 产物,供单元测试直接引用(纯逻辑,不依赖 DOM)。
+await build({
+  entryPoints: ['src/client/controller.ts'],
+  outfile: 'lib/controller.js',
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node18',
+  packages: 'external',
+  logLevel: 'info',
+})
+
 // Client 半:loader 的 lazy-CJS factory 形态(对齐官方包的产物结构)。
 // react 与 @deepseek-ai/* 是页面运行时外部模块,不打包进 bundle。
 const banner = [
@@ -52,4 +64,4 @@ await build({
   logLevel: 'info',
 })
 
-console.log('[build] lib/index.js + lib/client.js + lib/prompt.js done')
+console.log('[build] lib/index.js + lib/client.js + lib/prompt.js + lib/controller.js done')
