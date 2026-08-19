@@ -267,4 +267,48 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 9b 默认完整模式提示词')
 }
 
+// 10. 推理强度「最低档」:钳到 resolveModel 暴露的最低 effort,覆盖会话值
+{
+  const { handler, getOptions } = await setup({
+    config: { reasoningEffort: 'lowest' },
+    llmOverrides: {
+      resolveModelInfo: async () => ({
+        provider: 'p',
+        id: 'm',
+        name: 'M',
+        reasoning: {
+          efforts: [
+            { id: 'high', name: 'High' },
+            { id: 'low', name: 'Low' },
+          ],
+        },
+      }),
+    },
+  })
+  await call(handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(getOptions().reasoningEffort, 'low', '应钳到最低档而非会话的 high')
+  console.log('✓ 10 推理强度钳到最低档')
+}
+
+// 10b. 默认跟随会话:会话的 reasoningEffort 原样透传;模型不暴露推理时不乱发
+{
+  const { handler, getOptions } = await setup({
+    llmOverrides: { resolveModelInfo: async () => ({ provider: 'p', id: 'm', name: 'M' }) },
+  })
+  await call(handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(getOptions().reasoningEffort, 'high')
+  console.log('✓ 10b 默认透传会话推理强度')
+}
+
+// 10c. 「最低档」但模型不支持推理:回退会话值,不冒险构造无效 effort
+{
+  const { handler, getOptions } = await setup({
+    config: { reasoningEffort: 'lowest' },
+    llmOverrides: { resolveModelInfo: async () => ({ provider: 'p', id: 'm', name: 'M' }) },
+  })
+  await call(handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(getOptions().reasoningEffort, 'high')
+  console.log('✓ 10c 不支持推理时回退会话值')
+}
+
 console.log('\nsmoke: all passed')

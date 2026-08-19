@@ -22,6 +22,8 @@ export interface Config {
   timeoutSeconds: number
   /** 优化模式:full = 诊断分析 + 优化改写;fast = 仅优化(更快)。 */
   mode: OptimizerMode
+  /** 推理强度:session = 跟随会话;lowest = 钳到该模型支持的最低档(推理模型等待显著缩短)。 */
+  reasoningEffort: 'session' | 'lowest'
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -30,6 +32,7 @@ export const Config: Schema<Config> = Schema.object({
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
   mode: Schema.union(['full', 'fast'] as const).default('full'),
+  reasoningEffort: Schema.union(['session', 'lowest'] as const).default('session'),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -107,8 +110,28 @@ async function collectText(
   return { text, truncated }
 }
 
-/** HTTP 载体服务的最小依赖面(webServer / httpServer 两个名字共用同一形状)。 */
-interface WebRouteService {
+/**
+ * 解析指定路由支持的最低推理强度(「最低档」配置用)。
+ * 优先按常见低档关键词匹配 effort 的 id/name;匹配不到取适配器展示顺序首位。
+ * 目录查询失败或模型不支持推理时返回 undefined,调用方回退到会话选择。
+ */
+async function resolveLowestEffort(
+  llm: Context['llm'],
+  provider: string,
+  model: string,
+): Promise<string | undefined> {
+  try {
+    // reasoning 只在精确路由元数据上,listModels 的目录项没有。
+    const efforts = (await llm.resolveModelInfo(provider, model)).reasoning?.efforts
+    if (!efforts?.length) return undefined
+    const keyworded = efforts.find((e) => /none|minimal|low|低/i.test(`${e.id} ${e.name}`))
+    return String((keyworded ?? efforts[0]).id)
+  } catch {
+    return undefined
+  }
+}
+
+/** HTTP 载体服务的最小依赖面(webServer / httpServer 两个名字共用同一形状)。 */interface WebRouteService {
   register(route: {
     kind: 'exact' | 'prefix'
     path: string
@@ -223,9 +246,16 @@ export function apply(ctx: Context, config: Config) {
           maxTokens: cfg.maxTokens,
           signal: abort.signal,
         }
-        const reasoningEffort = asOptionalString(body.reasoningEffort)
-        if (reasoningEffort) {
-          options.reasoningEffort = reasoningEffort as GenerateOptions['reasoningEffort']
+        // 推理强度:默认透传会话选择;配置「最低档」时钳到该模型支持的最低
+        // effort(优化是格式化元任务,高推理只会拉长首 token 前的空等)。
+        // 无法确定最低档(目录失败/模型不暴露推理)时回退到会话值,不冒险乱发。
+        const sessionEffort = asOptionalString(body.reasoningEffort)
+        let effort = sessionEffort
+        if (cfg.reasoningEffort === 'lowest') {
+          effort = (await resolveLowestEffort(ctx.llm, provider, model)) ?? sessionEffort
+        }
+        if (effort) {
+          options.reasoningEffort = effort as GenerateOptions['reasoningEffort']
         }
 
         // 阶段二:流式响应。delta 逐段推送(SSE),done 携带最终解析结果;

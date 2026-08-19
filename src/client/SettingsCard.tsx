@@ -12,6 +12,8 @@ export interface OptimizerSettingsValue {
   timeoutSeconds?: number
   /** full = 分析 + 优化;fast = 仅优化(输出 token 约减半,等待更短)。 */
   mode?: 'full' | 'fast'
+  /** session = 跟随会话;lowest = 钳到该模型支持的最低档(推理模型等待显著缩短)。 */
+  reasoningEffort?: 'session' | 'lowest'
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -195,6 +197,18 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           >
             <option value="full">完整(分析诊断 + 优化)</option>
             <option value="fast">快速(仅优化,等待约减半)</option>
+          </select>
+        </div>
+
+        <div style={styles.row}>
+          <span style={styles.label}>推理强度</span>
+          <select
+            style={{ ...styles.input, maxWidth: 260 }}
+            value={value.reasoningEffort ?? 'session'}
+            onChange={(e) => void scope.set('reasoningEffort', e.target.value)}
+          >
+            <option value="session">跟随当前会话(默认)</option>
+            <option value="lowest">降到最低档(推理模型更快)</option>
           </select>
         </div>
 
