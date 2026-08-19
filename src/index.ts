@@ -18,12 +18,15 @@ export interface Config {
   model?: string
   /** 单次优化调用的最大输出 token 数。 */
   maxTokens: number
+  /** 单次优化调用的超时时间(秒);超时后中止模型调用并通知客户端。 */
+  timeoutSeconds: number
 }
 
 export const Config: Schema<Config> = Schema.object({
   language: Schema.union(['zh', 'en'] as const).default('zh'),
   model: Schema.string(),
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
+  timeoutSeconds: Schema.number().min(10).max(600).default(120),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -232,16 +235,30 @@ export function apply(ctx: Context, config: Config) {
         const send = (event: Record<string, unknown>) => {
           if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`)
         }
+        // 超时兜底:模型挂死时中止调用并通知客户端(timedOut 与客户端断连共用 abort,靠标志位区分)。
+        const timeoutSec = cfg.timeoutSeconds ?? 120
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          abort.abort()
+        }, timeoutSec * 1000)
         try {
           const raw = await collectText(ctx.llm.stream(options), (delta) => send({ type: 'delta', text: delta }))
           const parsed = parseOptimizerOutput(raw.text)
           send({ type: 'done', ...parsed, truncated: raw.truncated, provider, model })
         } catch (error) {
-          if (!abort.signal.aborted) {
+          if (timedOut) {
+            send({
+              type: 'error',
+              error: `优化超时:${timeoutSec} 秒内未生成完毕。可在 设置 → 插件配置 → 提示词优化 中调高「超时时间」。`,
+            })
+          } else if (!abort.signal.aborted) {
             const message = error instanceof Error ? error.message : String(error)
             console.error(`[${name}] optimize failed:`, error)
             send({ type: 'error', error: message })
           }
+        } finally {
+          clearTimeout(timer)
         }
         res.end()
       } catch (error) {

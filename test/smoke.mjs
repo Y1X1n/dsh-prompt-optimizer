@@ -221,4 +221,28 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 7 max-tokens 截断标记')
 }
 
+// 8. 超时:模型挂死时中止流并推送 error 事件(慢用例,约 10s)
+{
+  const { handler } = await setup({
+    config: { timeoutSeconds: 10 },
+    llmOverrides: {
+      stream(options) {
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'text-delta', index: 0, text: '<<<ANALYSIS>>>\n卡在分析阶段' }
+            await new Promise((_, reject) => {
+              options.signal.addEventListener('abort', () => reject(new Error('aborted')))
+            })
+          },
+        }
+      },
+    },
+  })
+  const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  const err = sseEvents(res).find((e) => e.type === 'error')
+  assert.ok(err, '超时后应收到 error 事件')
+  assert.match(err.error, /超时/)
+  console.log('✓ 8 超时中止并通知(慢)')
+}
+
 console.log('\nsmoke: all passed')

@@ -8,6 +8,8 @@ export interface OptimizerSettingsValue {
   /** '' = 跟随当前会话;否则 'provider/model'。 */
   model?: string
   maxTokens?: number
+  /** 单次优化调用的超时时间(秒)。 */
+  timeoutSeconds?: number
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -150,6 +152,15 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           onCommit={(v) => {
             const n = Number.parseInt(v, 10)
             if (Number.isFinite(n) && n >= 1024 && n <= 32768) void scope.set('maxTokens', n)
+          }}
+        />
+        <TextField
+          label="超时时间(秒)"
+          value={String(value.timeoutSeconds ?? 120)}
+          placeholder="120"
+          onCommit={(v) => {
+            const n = Number.parseInt(v, 10)
+            if (Number.isFinite(n) && n >= 10 && n <= 600) void scope.set('timeoutSeconds', n)
           }}
         />
         {!snap.writable && snap.status === 'ready' && (
