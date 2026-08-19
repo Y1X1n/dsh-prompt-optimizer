@@ -26,6 +26,8 @@ export interface Config {
   mode: string
   /** 推理强度('session'/'lowest';其他值按 'session' 处理)。 */
   reasoningEffort: string
+  /** 采样温度(0-2,默认 0.2);优化是格式化任务,低温输出更稳定。 */
+  temperature: number
 }
 
 // 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 ~/.dsh/settings.yaml,
@@ -39,6 +41,7 @@ export const Config: Schema<Config> = Schema.object({
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
   mode: Schema.string().default('full'),
   reasoningEffort: Schema.string().default('session'),
+  temperature: Schema.number().min(0).max(2).default(0.2),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -322,6 +325,7 @@ export function apply(ctx: Context, config: Config) {
                 system,
                 messages: [message],
                 maxTokens: cfg.maxTokens,
+                temperature: cfg.temperature ?? 0.2,
                 signal: abort.signal,
               }
               let effort = sessionEffort

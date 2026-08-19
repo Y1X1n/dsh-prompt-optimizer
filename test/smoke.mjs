@@ -410,4 +410,15 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 13b 半截失败后不回退')
 }
 
+// 14. 采样温度:默认 0.2(格式化任务求稳),可被配置覆盖
+{
+  const a = await setup()
+  await call(a.handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(a.getOptions().temperature, 0.2)
+  const b = await setup({ config: { temperature: 0.7 } })
+  await call(b.handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(b.getOptions().temperature, 0.7)
+  console.log('✓ 14 温度默认 0.2 且可配')
+}
+
 console.log('\nsmoke: all passed')

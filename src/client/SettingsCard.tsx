@@ -16,6 +16,8 @@ export interface OptimizerSettingsValue {
   mode?: 'full' | 'fast'
   /** session = 跟随会话;lowest = 钳到该模型支持的最低档(推理模型等待显著缩短)。 */
   reasoningEffort?: 'session' | 'lowest'
+  /** 采样温度(0-2),默认 0.2。 */
+  temperature?: number
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -290,6 +292,16 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
             return Number.isFinite(n) && n >= 10 && n <= 600 ? null : '请输入 10–600 之间的数字'
           }}
           onCommit={(v) => void scope.set('timeoutSeconds', Number.parseInt(v, 10))}
+        />
+        <TextField
+          label="采样温度"
+          value={String(value.temperature ?? 0.2)}
+          placeholder="0.2"
+          validate={(v) => {
+            const n = Number.parseFloat(v)
+            return Number.isFinite(n) && n >= 0 && n <= 2 ? null : '请输入 0–2 之间的数字'
+          }}
+          onCommit={(v) => void scope.set('temperature', Number.parseFloat(v))}
         />
         {!snap.writable && snap.status === 'ready' && (
           <div style={styles.hint}>当前为内存模式:设置不会持久化。</div>
