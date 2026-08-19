@@ -421,4 +421,21 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 14 温度默认 0.2 且可配')
 }
 
+// 15. finish 为 tool-calls(优化调用不带工具)→ 明确报错而非当成功展示
+{
+  const { handler } = await setup({
+    llmOverrides: {
+      async *stream() {
+        yield { type: 'text-delta', index: 0, text: '给我调个工具' }
+        yield { type: 'finish', reason: { kind: 'tool-calls' } }
+      },
+    },
+  })
+  const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  const err = sseEvents(res).find((e) => e.type === 'error')
+  assert.ok(err, '应收到 error 事件')
+  assert.match(err.error, /工具调用/)
+  console.log('✓ 15 tool-calls finish 防御')
+}
+
 console.log('\nsmoke: all passed')

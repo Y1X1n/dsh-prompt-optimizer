@@ -123,6 +123,10 @@ async function collectText(
         if (reason.kind === 'error' || reason.kind === 'aborted') {
           throw new Error(`模型调用失败(${reason.failure.code}): ${reason.failure.message}`)
         }
+        // 优化调用不带工具,模型请求工具说明路由/适配异常,明确报错而非当成功展示。
+        if (reason.kind === 'tool-calls') {
+          throw new Error('模型意外请求工具调用(优化调用不提供工具),请检查模型路由配置')
+        }
         if (reason.kind === 'max-tokens') truncated = true
         break
       }
