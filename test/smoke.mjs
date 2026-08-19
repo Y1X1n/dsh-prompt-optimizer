@@ -77,12 +77,12 @@ function doneOf(res) {
 }
 
 async function setup({ config = {}, llmOverrides = {} } = {}) {
-  let route
+  const routes = {}
   let lastOptions = null
   const ctx = new Context()
   ctx.provide('httpServer', {
     register(r) {
-      route = r
+      routes[r.path] = r
       return () => {}
     },
   })
@@ -99,8 +99,14 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     ...llmOverrides,
   })
   await ctx.plugin(plugin, config)
-  assert.ok(route, '插件应注册 HTTP 路由')
-  return { ctx, handler: route.handler, getOptions: () => lastOptions }
+  assert.ok(routes['/dsh-prompt-optimizer/optimize'], '插件应注册优化路由')
+  assert.ok(routes['/dsh-prompt-optimizer/test-model'], '插件应注册测试路由')
+  return {
+    ctx,
+    handler: routes['/dsh-prompt-optimizer/optimize'].handler,
+    testHandler: routes['/dsh-prompt-optimizer/test-model'].handler,
+    getOptions: () => lastOptions,
+  }
 }
 
 // 1. 正常路径:分析 + 优化结果按标记解析
@@ -322,6 +328,36 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   assert.ok(getOptions().system.includes('ANALYSIS'), '未知 mode 应按完整模式处理')
   assert.match(getOptions().system, /资深提示词工程专家/, '未知 language 应按中文处理')
   console.log('✓ 11 旧版非法枚举值归一化')
+}
+
+// 12. 模型连接测试:成功返回 ok + 实际路由 + 耗时;探活调用 32 token 封顶
+{
+  const { testHandler, getOptions } = await setup()
+  const res = await call(testHandler, {})
+  assert.equal(res.status, 200)
+  const data = JSON.parse(res.body)
+  assert.equal(data.ok, true)
+  assert.equal(data.provider, 'deepseek-official')
+  assert.equal(data.model, 'deepseek-chat')
+  assert.equal(typeof data.latencyMs, 'number')
+  assert.equal(getOptions().maxTokens, 32, '探活调用应 32 token 封顶')
+  console.log('✓ 12 连接测试成功路径')
+}
+
+// 12b. 连接测试:模型失败 → 200 + ok:false(路由可达,结果在载荷里)
+{
+  const { testHandler } = await setup({
+    llmOverrides: {
+      async *stream() {
+        yield { type: 'finish', reason: { kind: 'error', failure: { code: 'AUTH', message: 'bad key' } } }
+      },
+    },
+  })
+  const res = await call(testHandler, { provider: 'p', model: 'm' })
+  const data = JSON.parse(res.body)
+  assert.equal(data.ok, false)
+  assert.match(data.error, /bad key/)
+  console.log('✓ 12b 连接测试失败透传')
 }
 
 console.log('\nsmoke: all passed')

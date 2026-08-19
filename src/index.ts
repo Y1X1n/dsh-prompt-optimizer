@@ -40,6 +40,7 @@ export const Config: Schema<Config> = Schema.object({
 
 const NS = settingsNamespace('prompt-optimizer')
 const ROUTE_PATH = '/dsh-prompt-optimizer/optimize'
+const TEST_ROUTE_PATH = '/dsh-prompt-optimizer/test-model'
 const MAX_BODY_BYTES = 256 * 1024
 
 interface OptimizeRequestBody {
@@ -77,6 +78,21 @@ async function readJsonBody(req: import('node:http').IncomingMessage): Promise<u
   }
   if (chunks.length === 0) return {}
   return JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+}
+
+/** 读取请求体并直接应答解析错误(400/413);成功返回 body,失败返回 undefined(响应已写)。 */
+async function readBodyOrReply(req: IncomingMessage, res: ServerResponse): Promise<OptimizeRequestBody | undefined> {
+  try {
+    return (await readJsonBody(req)) as OptimizeRequestBody
+  } catch (error) {
+    // 请求体问题是客户端错误(400/413),不是上游模型失败(502)。
+    if (error instanceof PayloadTooLargeError) {
+      writeJson(res, 413, { ok: false, error: error.message })
+    } else {
+      writeJson(res, 400, { ok: false, error: '请求体不是合法的 JSON' })
+    }
+    return undefined
+  }
 }
 
 /** 折叠流式输出为纯文本;finish 为 error/aborted 时抛出,max-tokens 标记截断。onDelta 逐段回调增量(用于 SSE 透传)。 */
@@ -134,7 +150,44 @@ async function resolveLowestEffort(
   }
 }
 
-/** HTTP 载体服务的最小依赖面(webServer / httpServer 两个名字共用同一形状)。 */interface WebRouteService {
+/**
+ * 模型路由解析:设置里固定的 'provider/model' → 请求方会话当前选择 → 第一个可用路由。
+ * 空字符串视为未设置;provider 路由键不含 '/',模型 id 可以含。无可用路由时返回 undefined。
+ */
+async function resolveRoute(
+  llm: Context['llm'],
+  pinnedModel: string | undefined,
+  bodyProvider: string | undefined,
+  bodyModel: string | undefined,
+): Promise<{ provider: string; model: string } | undefined> {
+  let provider: string | undefined
+  let model: string | undefined
+  const pinned = asOptionalString(pinnedModel)
+  if (pinned) {
+    const slash = pinned.indexOf('/')
+    if (slash > 0 && slash < pinned.length - 1) {
+      provider = pinned.slice(0, slash)
+      model = pinned.slice(slash + 1)
+    }
+  }
+  provider ??= bodyProvider
+  model ??= bodyModel
+  if (!provider || !model) {
+    const first = llm.listProviders()[0]
+    if (!provider && first) provider = first.id
+    if (provider && !model) {
+      try {
+        model = (await llm.listModels(provider))[0]?.id
+      } catch {
+        // 目录查询失败不代表路由不可用,留空往下走到明确报错。
+      }
+    }
+  }
+  return provider && model ? { provider, model } : undefined
+}
+
+/** HTTP 载体服务的最小依赖面(webServer / httpServer 两个名字共用同一形状)。 */
+interface WebRouteService {
   register(route: {
     kind: 'exact' | 'prefix'
     path: string
@@ -156,7 +209,14 @@ export function apply(ctx: Context, config: Config) {
   const mount = (server: WebRouteService | undefined) => {
     if (!server || mounted) return
     mounted = true
-    ctx.effect(() => server.register({ kind: 'exact', path: ROUTE_PATH, handler }))
+    ctx.effect(() => {
+      const disposeOptimize = server.register({ kind: 'exact', path: ROUTE_PATH, handler })
+      const disposeTest = server.register({ kind: 'exact', path: TEST_ROUTE_PATH, handler: testHandler })
+      return () => {
+        disposeOptimize()
+        disposeTest()
+      }
+    })
     console.log(`[${name}] loaded, POST ${ROUTE_PATH}`)
   }
   ctx.inject(['webServer'], (sctx) => mount((sctx as unknown as { webServer?: WebRouteService }).webServer))
@@ -183,18 +243,8 @@ export function apply(ctx: Context, config: Config) {
       })
 
       try {
-        let body: OptimizeRequestBody
-        try {
-          body = (await readJsonBody(req)) as OptimizeRequestBody
-        } catch (error) {
-          // 请求体问题是客户端错误(400/413),不是上游模型失败(502)。
-          if (error instanceof PayloadTooLargeError) {
-            writeJson(res, 413, { ok: false, error: error.message })
-          } else {
-            writeJson(res, 400, { ok: false, error: '请求体不是合法的 JSON' })
-          }
-          return
-        }
+        const body = await readBodyOrReply(req, res)
+        if (!body) return
         const text = asOptionalString(body.text)
         if (!text) {
           writeJson(res, 400, { ok: false, error: '提示词内容为空' })
@@ -205,38 +255,15 @@ export function apply(ctx: Context, config: Config) {
         // 宽松 schema 的配套归一化:未知枚举值一律回落默认,保证旧版设置文档可用。
         const language: OutputLanguage = cfg.language === 'en' ? 'en' : 'zh'
         const mode: OptimizerMode = cfg.mode === 'fast' ? 'fast' : 'full'
-        // 模型路由解析顺序:设置里固定的 'provider/model' → 请求方会话当前选择
-        // → 第一个可用路由。空字符串视为未设置;provider 路由键不含 '/',模型 id 可以含。
-        let provider: string | undefined
-        let model: string | undefined
-        const pinned = asOptionalString(cfg.model)
-        if (pinned) {
-          const slash = pinned.indexOf('/')
-          if (slash > 0 && slash < pinned.length - 1) {
-            provider = pinned.slice(0, slash)
-            model = pinned.slice(slash + 1)
-          }
-        }
-        provider ??= asOptionalString(body.provider)
-        model ??= asOptionalString(body.model)
-        if (!provider || !model) {
-          const first = ctx.llm.listProviders()[0]
-          if (!provider && first) provider = first.id
-          if (provider && !model) {
-            try {
-              model = (await ctx.llm.listModels(provider))[0]?.id
-            } catch {
-              // 目录查询失败不代表路由不可用,留空往下走到明确报错。
-            }
-          }
-        }
-        if (!provider || !model) {
+        const route = await resolveRoute(ctx.llm, cfg.model, asOptionalString(body.provider), asOptionalString(body.model))
+        if (!route) {
           writeJson(res, 409, {
             ok: false,
             error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置 → 插件配置 → 提示词优化 中固定一个模型',
           })
           return
         }
+        const { provider, model } = route
 
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
@@ -306,5 +333,60 @@ export function apply(ctx: Context, config: Config) {
         console.error(`[${name}] optimize failed:`, error)
         writeJson(res, 502, { ok: false, error: message })
       }
+  }
+
+  /** 模型连通性测试:按同一套路由解析发一个 32 token 封顶的探活调用,20s 超时。结果(含失败)一律 200 返回,ok 标志区分。 */
+  async function testHandler(req: IncomingMessage, res: ServerResponse) {
+    if (req.method !== 'POST') {
+      writeJson(res, 405, { ok: false, error: 'Method Not Allowed' })
+      return
+    }
+    const body = await readBodyOrReply(req, res)
+    if (!body) return
+    const cfg = current()
+    const route = await resolveRoute(ctx.llm, cfg.model, asOptionalString(body.provider), asOptionalString(body.model))
+    if (!route) {
+      writeJson(res, 409, {
+        ok: false,
+        error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置 → 插件配置 → 提示词优化 中固定一个模型',
+      })
+      return
+    }
+    const abort = new AbortController()
+    res.on('close', () => {
+      if (!res.writableEnded) abort.abort()
+    })
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      abort.abort()
+    }, 20_000)
+    const started = Date.now()
+    try {
+      const message: Message = {
+        id: `prompt-optimizer-test-${crypto.randomUUID()}` as Message['id'],
+        role: 'user',
+        content: [{ type: 'text', text: 'ping' }],
+        source: { kind: 'plugin', plugin: name },
+      }
+      const result = await collectText(
+        ctx.llm.stream({ provider: route.provider, model: route.model, messages: [message], maxTokens: 32, signal: abort.signal }),
+      )
+      writeJson(res, 200, {
+        ok: true,
+        provider: route.provider,
+        model: route.model,
+        latencyMs: Date.now() - started,
+        reply: result.text.slice(0, 80),
+      })
+    } catch (error) {
+      if (timedOut) {
+        writeJson(res, 200, { ok: false, error: '连接测试超时(20s 无响应)' })
+      } else if (!abort.signal.aborted) {
+        writeJson(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    } finally {
+      clearTimeout(timer)
+    }
   }
 }

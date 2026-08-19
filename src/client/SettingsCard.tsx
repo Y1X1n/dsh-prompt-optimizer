@@ -132,6 +132,27 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // 模型连通性测试:Host 按同一套路由解析发探活调用,响应里带回实际测试的路由。
+    const [test, setTest] = useState<{ status: 'idle' | 'testing' | 'ok' | 'fail'; message?: string }>({ status: 'idle' })
+    const runTest = async () => {
+      setTest({ status: 'testing' })
+      try {
+        const resp = await fetch('/dsh-prompt-optimizer/test-model', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        })
+        const data = await resp.json().catch(() => null)
+        if (data?.ok) {
+          setTest({ status: 'ok', message: `连接正常:${data.provider} / ${data.model}(${data.latencyMs}ms)` })
+        } else {
+          setTest({ status: 'fail', message: String(data?.error ?? `请求失败(HTTP ${resp.status})`) })
+        }
+      } catch (cause) {
+        setTest({ status: 'fail', message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    }
+
     return (
       <section style={styles.card}>
         <div style={styles.title}>提示词优化</div>
@@ -174,6 +195,21 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           >
             ↻ 刷新
           </button>
+        </div>
+
+        <div style={styles.row}>
+          <span style={styles.label}>模型连通性</span>
+          <button
+            type="button"
+            style={{ ...styles.refreshBtn, ...(test.status === 'testing' ? { opacity: 0.45, cursor: 'default' } : {}) }}
+            disabled={test.status === 'testing'}
+            onClick={() => void runTest()}
+          >
+            {test.status === 'testing' ? '测试中…' : '测试连接'}
+          </button>
+          {test.message && (
+            <span style={test.status === 'fail' ? styles.fieldError : styles.hint}>{test.message}</span>
+          )}
         </div>
 
         <div style={styles.row}>
