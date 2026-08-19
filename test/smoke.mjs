@@ -360,4 +360,54 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 12b 连接测试失败透传')
 }
 
+// 13. 回退模型链:主路由零产出失败 → 自动换备用路由,done 带 fallbackUsed
+{
+  const { handler } = await setup({
+    config: { fallbackModel: 'good-p/good-m' },
+    llmOverrides: {
+      async *stream(options) {
+        if (options.provider === 'bad-p') {
+          yield { type: 'finish', reason: { kind: 'error', failure: { code: 'DOWN', message: 'provider down' } } }
+          return
+        }
+        yield { type: 'text-delta', index: 0, text: '<<<OPTIMIZED>>>\n回退路由产出\n<<<END>>>\n' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+  })
+  const res = await call(handler, { text: 'x', provider: 'bad-p', model: 'bad-m' })
+  const data = doneOf(res)
+  assert.equal(data.provider, 'good-p')
+  assert.equal(data.model, 'good-m')
+  assert.equal(data.fallbackUsed, true)
+  assert.match(data.optimized, /回退路由产出/)
+  console.log('✓ 13 主路由失败自动回退')
+}
+
+// 13b. 已向客户端推送过 delta 后失败 → 不回退(避免双模型拼接),直接 error 事件
+{
+  let calls = 0
+  const { handler } = await setup({
+    config: { fallbackModel: 'good-p/good-m' },
+    llmOverrides: {
+      async *stream(options) {
+        calls++
+        if (options.provider === 'bad-p') {
+          yield { type: 'text-delta', index: 0, text: '<<<ANALYSIS>>>\n半截输出' }
+          yield { type: 'finish', reason: { kind: 'error', failure: { code: 'X', message: 'mid-stream boom' } } }
+          return
+        }
+        yield { type: 'text-delta', index: 0, text: '<<<OPTIMIZED>>>\n不应走到这\n<<<END>>>\n' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+  })
+  const res = await call(handler, { text: 'x', provider: 'bad-p', model: 'bad-m' })
+  const events = sseEvents(res)
+  assert.ok(!events.some((e) => e.type === 'done'), '不应有 done')
+  assert.match(events.find((e) => e.type === 'error')?.error ?? '', /mid-stream boom/)
+  assert.equal(calls, 1, '已产出内容后不得回退重试')
+  console.log('✓ 13b 半截失败后不回退')
+}
+
 console.log('\nsmoke: all passed')

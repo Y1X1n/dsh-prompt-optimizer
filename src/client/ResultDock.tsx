@@ -165,6 +165,7 @@ export function createResultDock(controller: OptimizerController) {
           {result && (
             <span style={styles.modelBadge}>
               {result.provider} / {result.model}
+              {result.fallbackUsed ? ' · 已回退' : ''}
             </span>
           )}
           <button type="button" style={styles.close} title="关闭 (Esc)" onClick={() => controller.close()}>

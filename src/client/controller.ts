@@ -9,6 +9,8 @@ export interface OptimizeResult {
   truncated: boolean
   provider: string
   model: string
+  /** 主路由失败、实际由回退路由产出时为 true。 */
+  fallbackUsed: boolean
 }
 
 export interface OptimizerState {
@@ -139,6 +141,7 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
                 truncated: event.truncated === true,
                 provider: String(event.provider ?? ''),
                 model: String(event.model ?? ''),
+                fallbackUsed: event.fallbackUsed === true,
               },
             })
           } else if (event.type === 'error') {

@@ -7,6 +7,8 @@ export interface OptimizerSettingsValue {
   language?: 'zh' | 'en'
   /** '' = 跟随当前会话;否则 'provider/model'。 */
   model?: string
+  /** '' = 无回退;否则 'provider/model'。 */
+  fallbackModel?: string
   maxTokens?: number
   /** 单次优化调用的超时时间(秒)。 */
   timeoutSeconds?: number
@@ -197,9 +199,30 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           </button>
         </div>
 
+        {groups !== null && (
+          <div style={styles.row}>
+            <span style={styles.label}>回退模型</span>
+            <select
+              style={styles.input}
+              value={value.fallbackModel ?? ''}
+              onChange={(e) => void scope.set('fallbackModel', e.target.value)}
+            >
+              <option value="">无(默认)</option>
+              {groups.map((g) => (
+                <optgroup key={g.id} label={g.name}>
+                  {g.models.map((m) => (
+                    <option key={m.id} value={`${g.id}/${m.id}`}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div style={styles.row}>
-          <span style={styles.label}>模型连通性</span>
-          <button
+          <span style={styles.label}>模型连通性</span>          <button
             type="button"
             style={{ ...styles.refreshBtn, ...(test.status === 'testing' ? { opacity: 0.45, cursor: 'default' } : {}) }}
             disabled={test.status === 'testing'}

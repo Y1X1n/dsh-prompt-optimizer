@@ -16,6 +16,8 @@ export interface Config {
   language: string
   /** 固定模型,'provider/model' 形式;留空 = 跟随发起请求的会话当前选择。 */
   model?: string
+  /** 回退模型('provider/model',留空 = 无);主路由在未产出任何内容就失败时自动换用。 */
+  fallbackModel?: string
   /** 单次优化调用的最大输出 token 数。 */
   maxTokens: number
   /** 单次优化调用的超时时间(秒);超时后中止模型调用并通知客户端。 */
@@ -32,6 +34,7 @@ export interface Config {
 export const Config: Schema<Config> = Schema.object({
   language: Schema.string().default('zh'),
   model: Schema.string(),
+  fallbackModel: Schema.string(),
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
   mode: Schema.string().default('full'),
@@ -263,7 +266,18 @@ export function apply(ctx: Context, config: Config) {
           })
           return
         }
-        const { provider, model } = route
+        // 回退模型链:设置里配了 fallbackModel('provider/model')时追加一条备用路由。
+        // 仅当某次尝试还没向客户端推送过任何 delta 就失败时才换路由重试——
+        // 客户端已经看到部分内容后再换路由,输出会变成两个模型的拼接。
+        const routes = [route]
+        const fallbackRaw = asOptionalString(cfg.fallbackModel)
+        if (fallbackRaw) {
+          const slash = fallbackRaw.indexOf('/')
+          if (slash > 0 && slash < fallbackRaw.length - 1) {
+            const fb = { provider: fallbackRaw.slice(0, slash), model: fallbackRaw.slice(slash + 1) }
+            if (fb.provider !== route.provider || fb.model !== route.model) routes.push(fb)
+          }
+        }
 
         const message: Message = {
           id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
@@ -271,25 +285,11 @@ export function apply(ctx: Context, config: Config) {
           content: [{ type: 'text', text: buildUserPayload(text, language) }],
           source: { kind: 'plugin', plugin: name },
         }
-        const options: GenerateOptions = {
-          provider,
-          model,
-          system: buildSystemPrompt(language, mode),
-          messages: [message],
-          maxTokens: cfg.maxTokens,
-          signal: abort.signal,
-        }
+        const system = buildSystemPrompt(language, mode)
         // 推理强度:默认透传会话选择;配置「最低档」时钳到该模型支持的最低
-        // effort(优化是格式化元任务,高推理只会拉长首 token 前的空等)。
+        // effort(优化是格式化元任务,高推理只会拉长首 token 前的空等),按路由逐次解析。
         // 无法确定最低档(目录失败/模型不暴露推理)时回退到会话值,不冒险乱发。
         const sessionEffort = asOptionalString(body.reasoningEffort)
-        let effort = sessionEffort
-        if (cfg.reasoningEffort === 'lowest') {
-          effort = (await resolveLowestEffort(ctx.llm, provider, model)) ?? sessionEffort
-        }
-        if (effort) {
-          options.reasoningEffort = effort as GenerateOptions['reasoningEffort']
-        }
 
         // 阶段二:流式响应。delta 逐段推送(SSE),done 携带最终解析结果;
         // 此阶段响应头已发出,模型错误也走事件通道,无法再改状态码。
@@ -309,18 +309,60 @@ export function apply(ctx: Context, config: Config) {
           abort.abort()
         }, timeoutSec * 1000)
         try {
-          const raw = await collectText(ctx.llm.stream(options), (delta) => send({ type: 'delta', text: delta }))
-          const parsed = parseOptimizerOutput(raw.text)
-          send({ type: 'done', ...parsed, truncated: raw.truncated, provider, model })
-        } catch (error) {
-          if (timedOut) {
+          let sentAny = false
+          let used = routes[0]
+          let raw: { text: string; truncated: boolean } | null = null
+          let lastError: unknown = null
+          for (const attempt of routes) {
+            used = attempt
+            try {
+              const options: GenerateOptions = {
+                provider: attempt.provider,
+                model: attempt.model,
+                system,
+                messages: [message],
+                maxTokens: cfg.maxTokens,
+                signal: abort.signal,
+              }
+              let effort = sessionEffort
+              if (cfg.reasoningEffort === 'lowest') {
+                effort = (await resolveLowestEffort(ctx.llm, attempt.provider, attempt.model)) ?? sessionEffort
+              }
+              if (effort) {
+                options.reasoningEffort = effort as GenerateOptions['reasoningEffort']
+              }
+              raw = await collectText(ctx.llm.stream(options), (delta) => {
+                sentAny = true
+                send({ type: 'delta', text: delta })
+              })
+              lastError = null
+              break
+            } catch (error) {
+              lastError = error
+              if (timedOut || abort.signal.aborted || sentAny) break
+              if (attempt !== routes[routes.length - 1]) {
+                console.error(`[${name}] 主路由 ${attempt.provider}/${attempt.model} 失败,尝试回退路由:`, error)
+              }
+            }
+          }
+          if (raw) {
+            const parsed = parseOptimizerOutput(raw.text)
+            send({
+              type: 'done',
+              ...parsed,
+              truncated: raw.truncated,
+              provider: used.provider,
+              model: used.model,
+              fallbackUsed: used !== routes[0],
+            })
+          } else if (timedOut) {
             send({
               type: 'error',
               error: `优化超时:${timeoutSec} 秒内未生成完毕。可在 设置 → 插件配置 → 提示词优化 中调高「超时时间」。`,
             })
-          } else if (!abort.signal.aborted) {
-            const message = error instanceof Error ? error.message : String(error)
-            console.error(`[${name}] optimize failed:`, error)
+          } else if (!abort.signal.aborted && lastError) {
+            const message = lastError instanceof Error ? lastError.message : String(lastError)
+            console.error(`[${name}] optimize failed:`, lastError)
             send({ type: 'error', error: message })
           }
         } finally {
