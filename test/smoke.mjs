@@ -438,4 +438,19 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 15 tool-calls finish 防御')
 }
 
+// 16. 输出上限跟随输入长度:长草稿自动抬升 maxTokens,32768 封顶;可关
+{
+  const longDraft = '一'.repeat(5000) // ≈5000 token,完整模式 ×2 = 10000 > 默认 8192
+  const a = await setup()
+  await call(a.handler, { text: longDraft, provider: 'p', model: 'm' })
+  assert.equal(a.getOptions().maxTokens, 10000, '长输入应抬升输出上限')
+  const huge = await setup()
+  await call(huge.handler, { text: '一'.repeat(20000), provider: 'p', model: 'm' })
+  assert.equal(huge.getOptions().maxTokens, 32768, '超大输入应 32768 封顶')
+  const off = await setup({ config: { autoMaxTokens: false } })
+  await call(off.handler, { text: longDraft, provider: 'p', model: 'm' })
+  assert.equal(off.getOptions().maxTokens, 8192, '关闭自适应后保持配置值')
+  console.log('✓ 16 输出上限跟随输入长度')
+}
+
 console.log('\nsmoke: all passed')

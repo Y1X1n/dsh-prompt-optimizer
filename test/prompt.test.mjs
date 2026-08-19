@@ -2,7 +2,7 @@
  * prompt.ts 标记解析的单元测试。运行:先 `npm run build`,再 `node test/prompt.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
+import { estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
 
 // 1. 标准标记:正常分段
 {
@@ -65,6 +65,15 @@ import { parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt
   assert.equal(late.analysis, '分析完')
   assert.equal(late.optimized, '优化到一半')
   console.log('✓ p6 流式实况解析')
+}
+
+// 7. token 估算:CJK 约 1 字 1 token,其余约 4 字符 1 token
+{
+  assert.equal(estimateTokens(''), 0)
+  assert.equal(estimateTokens('你好世界'), 4)
+  assert.equal(estimateTokens('abcd'), 1)
+  assert.equal(estimateTokens('你好ab'), 3) // 2 CJK + 2 latin(0.5)→ 向上取整 3
+  console.log('✓ p7 token 估算')
 }
 
 console.log('\nprompt: all passed')

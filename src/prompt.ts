@@ -99,6 +99,24 @@ export function buildUserPayload(draft: string, language: OutputLanguage): strin
     : `以下是我的提示词草稿:\n\n${draft}`
 }
 
+/**
+ * 粗略估算文本 token 数(不依赖分词器):CJK 表意文字约 1 字 1 token,
+ * 其余字符(拉丁文/数字/标点/代码)约 4 字符 1 token。用于让输出上限跟随输入长度。
+ */
+export function estimateTokens(text: string): number {
+  let cjk = 0
+  let other = 0
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0
+    if ((code >= 0x3400 && code <= 0x4dbf) || (code >= 0x4e00 && code <= 0x9fff) || (code >= 0xf900 && code <= 0xfaff)) {
+      cjk += 1
+    } else {
+      other += 1
+    }
+  }
+  return Math.ceil(cjk + other / 4)
+}
+
 export interface OptimizerOutput {
   /** 诊断分析文本(可能为空字符串,当模型未遵守格式时)。 */
   analysis: string

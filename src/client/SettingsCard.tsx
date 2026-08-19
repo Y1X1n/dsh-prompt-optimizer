@@ -18,6 +18,8 @@ export interface OptimizerSettingsValue {
   reasoningEffort?: 'session' | 'lowest'
   /** 采样温度(0-2),默认 0.2。 */
   temperature?: number
+  /** 输出上限跟随输入长度,默认 true。 */
+  autoMaxTokens?: boolean
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -303,6 +305,18 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           }}
           onCommit={(v) => void scope.set('temperature', Number.parseFloat(v))}
         />
+
+        <div style={styles.row}>
+          <span style={styles.label}>输出上限自适应</span>
+          <select
+            style={{ ...styles.input, maxWidth: 260 }}
+            value={value.autoMaxTokens === false ? 'off' : 'on'}
+            onChange={(e) => void scope.set('autoMaxTokens', e.target.value === 'on')}
+          >
+            <option value="on">开:长草稿自动提高输出上限(默认)</option>
+            <option value="off">关:固定用上面的最大输出 Token</option>
+          </select>
+        </div>
         {!snap.writable && snap.status === 'ready' && (
           <div style={styles.hint}>当前为内存模式:设置不会持久化。</div>
         )}

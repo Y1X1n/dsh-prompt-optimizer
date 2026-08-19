@@ -3,7 +3,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { buildSystemPrompt, buildUserPayload, parseOptimizerOutput, type OptimizerMode, type OutputLanguage } from './prompt.js'
+import { buildSystemPrompt, buildUserPayload, estimateTokens, parseOptimizerOutput, type OptimizerMode, type OutputLanguage } from './prompt.js'
 
 export const name = 'dsh-prompt-optimizer'
 // 硬依赖只有 llm。HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫
@@ -28,6 +28,8 @@ export interface Config {
   reasoningEffort: string
   /** 采样温度(0-2,默认 0.2);优化是格式化任务,低温输出更稳定。 */
   temperature: number
+  /** 输出上限跟随输入长度(默认开):长草稿时按输入 token 估算提高 maxTokens,避免截断。 */
+  autoMaxTokens: boolean
 }
 
 // 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 ~/.dsh/settings.yaml,
@@ -42,6 +44,7 @@ export const Config: Schema<Config> = Schema.object({
   mode: Schema.string().default('full'),
   reasoningEffort: Schema.string().default('session'),
   temperature: Schema.number().min(0).max(2).default(0.2),
+  autoMaxTokens: Schema.boolean().default(true),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -293,6 +296,12 @@ export function apply(ctx: Context, config: Config) {
           source: { kind: 'plugin', plugin: name },
         }
         const system = buildSystemPrompt(language, mode)
+        // 输出上限跟随输入长度:优化结果体量与草稿正相关(完整模式还多一段分析),
+        // 长草稿撞固定上限会被截断。取配置值与「输入估算 × 模式系数」的较大者,32768 封顶。
+        const maxTokens =
+          cfg.autoMaxTokens === false
+            ? cfg.maxTokens
+            : Math.min(32768, Math.max(cfg.maxTokens, Math.ceil(estimateTokens(text) * (mode === 'fast' ? 1.5 : 2))))
         // 推理强度:默认透传会话选择;配置「最低档」时钳到该模型支持的最低
         // effort(优化是格式化元任务,高推理只会拉长首 token 前的空等),按路由逐次解析。
         // 无法确定最低档(目录失败/模型不暴露推理)时回退到会话值,不冒险乱发。
@@ -328,7 +337,7 @@ export function apply(ctx: Context, config: Config) {
                 model: attempt.model,
                 system,
                 messages: [message],
-                maxTokens: cfg.maxTokens,
+                maxTokens,
                 temperature: cfg.temperature ?? 0.2,
                 signal: abort.signal,
               }
