@@ -110,18 +110,21 @@ export function createResultDock(controller: OptimizerController) {
   return function OptimizerResultDock(props: ResultDockProps) {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
     const [copied, setCopied] = useState(false)
+    // controller 是会话间共享的单例:面板只对发起优化的那个会话渲染,
+    // 避免切会话后旧结果跟着飘过来、甚至误替换别的会话的输入框。
+    const owns = state.open && state.last?.sessionId === props.sessionId
 
     useEffect(() => {
-      if (!state.open) return
+      if (!owns) return
       const onKey = (event: KeyboardEvent) => {
         if (event.key === 'Escape') controller.close()
       }
       document.addEventListener('keydown', onKey)
       return () => document.removeEventListener('keydown', onKey)
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state.open])
+    }, [owns])
 
-    if (!state.open) return null
+    if (!owns) return null
     const { result } = state
 
     const onCopy = async () => {

@@ -22,7 +22,7 @@ const buttonStyle = {
   whiteSpace: 'nowrap',
 } as const
 
-/** 发送栏工具行右区的触发按钮;结果面板由 composer.dock 槽位的 Dock 渲染。 */
+/** 发送栏工具行右区的触发按钮;结果面板由 conversation.input.dock 槽位的 Dock 渲染。 */
 export function createOptimizeButton(controller: OptimizerController) {
   return function OptimizeButton(props: OptimizeButtonProps) {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)

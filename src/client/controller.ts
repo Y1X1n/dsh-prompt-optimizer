@@ -24,7 +24,7 @@ const ROUTE = '/dsh-prompt-optimizer/optimize'
 const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, result: null, last: null }
 
 /**
- * 按钮(conversation.input.right)与结果面板(conversation.composer.dock)
+ * 按钮(conversation.input.right)与结果面板(conversation.input.dock)
  * 共享的状态容器:apply 闭包内创建,两个槽位组件各自 useSyncExternalStore 订阅。
  */
 export function createOptimizerController(ctx: ClientContext) {
