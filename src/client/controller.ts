@@ -36,6 +36,17 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
   let state: OptimizerState = INITIAL
   const listeners = new Set<() => void>()
   let abort: AbortController | null = null
+  // 流式实况的合帧缓冲:delta 碎(实测 2 字符一帧),每帧都 set 会让面板
+  // 整树重渲染数千次。攒 50ms 刷一次,人眼无感、滚动不卡。
+  let liveRaw = ''
+  let liveTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearLiveTimer = () => {
+    if (liveTimer) {
+      clearTimeout(liveTimer)
+      liveTimer = null
+    }
+  }
 
   const set = (patch: Partial<OptimizerState>) => {
     state = { ...state, ...patch }
@@ -46,6 +57,8 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
     const draft = text.trim()
     if (!draft || state.status === 'loading') return
     abort?.abort()
+    clearLiveTimer()
+    liveRaw = ''
     const controller = new AbortController()
     abort = controller
     set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId } })
@@ -88,7 +101,6 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
       if (!reader) throw new Error('当前环境不支持流式响应')
       const decoder = new TextDecoder()
       let buffer = ''
-      let raw = ''
       let terminal = false
       for (;;) {
         const { done, value } = await reader.read()
@@ -102,10 +114,19 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
           if (!line) continue
           const event = JSON.parse(line.slice(5).trim()) as Record<string, unknown>
           if (event.type === 'delta') {
-            raw += String(event.text ?? '')
-            set({ live: parsePartialOptimizerOutput(raw) })
+            liveRaw += String(event.text ?? '')
+            if (!liveTimer) {
+              liveTimer = setTimeout(() => {
+                liveTimer = null
+                // 仅在仍是当前请求的 loading 期间落帧(竞态:retry/close 后旧定时器不得复活)。
+                if (state.status === 'loading' && abort === controller) {
+                  set({ live: parsePartialOptimizerOutput(liveRaw) })
+                }
+              }, 50)
+            }
           } else if (event.type === 'done') {
             terminal = true
+            clearLiveTimer()
             set({
               status: 'done',
               live: null,
@@ -120,11 +141,13 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
             })
           } else if (event.type === 'error') {
             terminal = true
+            clearLiveTimer()
             set({ status: 'error', live: null, error: String(event.error ?? '未知错误') })
           }
         }
       }
       if (!terminal && !controller.signal.aborted) {
+        clearLiveTimer()
         set({ status: 'error', live: null, error: '连接中断:响应流提前结束' })
       }
     } catch (cause) {
@@ -146,6 +169,7 @@ export function createOptimizerController(ctx: ClientContext, opts: { isModelPin
     close() {
       abort?.abort()
       abort = null
+      clearLiveTimer()
       set({ ...INITIAL })
     },
   }
