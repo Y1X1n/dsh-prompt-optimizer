@@ -24,7 +24,10 @@ export const inject = ['slots', 'connection', 'remote', 'settingsScope']
 
 export function apply(ctx: ClientContext): void {
   const scope = ctx.settingsScope.bind<OptimizerSettingsValue>({ namespace: 'prompt-optimizer' })
-  const controller = createOptimizerController(ctx)
+  const controller = createOptimizerController(ctx, {
+    // 与 Host 侧「空字符串视为未设置」的口径一致。
+    isModelPinned: () => Boolean(scope.getSnapshot().value?.model?.trim()),
+  })
 
   // 发送栏工具行右区:发送按钮旁的「优化」入口(带 ✨ 图标)。
   ctx.slots.inject('conversation.input.right', () =>

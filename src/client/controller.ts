@@ -29,8 +29,10 @@ const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, resu
 /**
  * 按钮(conversation.input.right)与结果面板(conversation.input.dock)
  * 共享的状态容器:apply 闭包内创建,两个槽位组件各自 useSyncExternalStore 订阅。
+ * opts.isModelPinned:设置里固定了模型时返回 true(Host 固定值优先,
+ * 会话模型查询的结果反正用不上,跳过可省一次 RPC 往返)。
  */
-export function createOptimizerController(ctx: ClientContext) {
+export function createOptimizerController(ctx: ClientContext, opts: { isModelPinned?: () => boolean } = {}) {
   let state: OptimizerState = INITIAL
   const listeners = new Set<() => void>()
   let abort: AbortController | null = null
@@ -49,21 +51,24 @@ export function createOptimizerController(ctx: ClientContext) {
     set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId } })
     try {
       // 复用当前会话的模型选择(每次点击实时查询,会话里换模型立即生效);
-      // 查询失败时交给 Host 端回退解析。
+      // 查询失败时交给 Host 端回退解析。设置里固定了模型时跳过:Host 端
+      // 固定值优先,查询结果用不上,省一次 RPC 往返。
       let provider: string | undefined
       let model: string | undefined
       let reasoningEffort: string | undefined
-      try {
-        const resp = await ctx.connection.api.sessions.models({ sessionId }, controller.signal)
-        if (resp.result.ok) {
-          provider = resp.result.value.current.provider
-          model = resp.result.value.current.model
-          reasoningEffort = resp.result.value.current.reasoningEffort
-        } else {
-          console.warn('[dsh-prompt-optimizer] 会话模型查询被拒绝,改用 Host 回退:', resp.result.error)
+      if (!opts.isModelPinned?.()) {
+        try {
+          const resp = await ctx.connection.api.sessions.models({ sessionId }, controller.signal)
+          if (resp.result.ok) {
+            provider = resp.result.value.current.provider
+            model = resp.result.value.current.model
+            reasoningEffort = resp.result.value.current.reasoningEffort
+          } else {
+            console.warn('[dsh-prompt-optimizer] 会话模型查询被拒绝,改用 Host 回退:', resp.result.error)
+          }
+        } catch (cause) {
+          console.warn('[dsh-prompt-optimizer] 会话模型查询失败,改用 Host 回退:', cause)
         }
-      } catch (cause) {
-        console.warn('[dsh-prompt-optimizer] 会话模型查询失败,改用 Host 回退:', cause)
       }
       const resp = await fetch(ROUTE, {
         method: 'POST',
