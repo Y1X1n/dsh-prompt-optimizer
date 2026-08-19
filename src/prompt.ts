@@ -3,6 +3,8 @@
  */
 
 export type OutputLanguage = 'zh' | 'en'
+/** full = 诊断分析 + 优化改写;fast = 仅输出优化结果(输出 token 约减半,等待更短)。 */
+export type OptimizerMode = 'full' | 'fast'
 
 const MARKERS = {
   analysis: '<<<ANALYSIS>>>',
@@ -54,7 +56,40 @@ ${MARKERS.end}
 
 Do not output anything outside these markers.`
 
-export function buildSystemPrompt(language: OutputLanguage): string {
+// 快速模式:跳过诊断,直接产出优化结果。仍用 OPTIMIZED/END 标记包裹,
+// 客户端的流式分段解析(parsePartialOptimizerOutput)无需区分模式。
+const SYSTEM_FAST_ZH = `你是一位资深提示词工程专家。用户会给你一段「提示词草稿」,请直接输出优化后的完整提示词,不要做任何诊断分析。
+
+# 优化要求
+- 使用与草稿相同的语言
+- 忠实保留原意,不臆造用户未表达的需求
+- 结构清晰(内容较长时可用 Markdown 小节:角色 / 任务 / 约束 / 输出格式等)
+- 缺失但关键的信息不要编造,在文中以 [待补充:……] 标出
+
+# 输出格式(严格遵守,标记行单独成行)
+${MARKERS.optimized}
+输出优化后的完整提示词全文
+${MARKERS.end}
+
+除上述标记包裹的内容外,不要输出任何其他文字。`
+
+const SYSTEM_FAST_EN = `You are a senior prompt engineering expert. Given a "prompt draft" from the user, output an optimized version directly — no diagnosis.
+
+# Optimization requirements
+- Same language as the draft
+- Faithful to the original intent; never invent requirements
+- Clear structure (use Markdown sections for longer prompts: role / task / constraints / output format)
+- Mark missing critical information as [TODO: ...] instead of fabricating it
+
+# Output format (strictly follow; markers on their own lines)
+${MARKERS.optimized}
+The full optimized prompt text
+${MARKERS.end}
+
+Do not output anything outside these markers.`
+
+export function buildSystemPrompt(language: OutputLanguage, mode: OptimizerMode = 'full'): string {
+  if (mode === 'fast') return language === 'en' ? SYSTEM_FAST_EN : SYSTEM_FAST_ZH
   return language === 'en' ? SYSTEM_EN : SYSTEM_ZH
 }
 

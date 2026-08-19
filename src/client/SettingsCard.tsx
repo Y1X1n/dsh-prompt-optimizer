@@ -10,6 +10,8 @@ export interface OptimizerSettingsValue {
   maxTokens?: number
   /** 单次优化调用的超时时间(秒)。 */
   timeoutSeconds?: number
+  /** full = 分析 + 优化;fast = 仅优化(输出 token 约减半,等待更短)。 */
+  mode?: 'full' | 'fast'
 }
 
 /** 模型下拉的“跟随会话”取值。 */
@@ -181,6 +183,18 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           >
             <option value="zh">中文</option>
             <option value="en">English</option>
+          </select>
+        </div>
+
+        <div style={styles.row}>
+          <span style={styles.label}>优化模式</span>
+          <select
+            style={{ ...styles.input, maxWidth: 260 }}
+            value={value.mode ?? 'full'}
+            onChange={(e) => void scope.set('mode', e.target.value)}
+          >
+            <option value="full">完整(分析诊断 + 优化)</option>
+            <option value="fast">快速(仅优化,等待约减半)</option>
           </select>
         </div>
 

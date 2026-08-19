@@ -3,7 +3,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { buildSystemPrompt, buildUserPayload, parseOptimizerOutput, type OutputLanguage } from './prompt.js'
+import { buildSystemPrompt, buildUserPayload, parseOptimizerOutput, type OptimizerMode, type OutputLanguage } from './prompt.js'
 
 export const name = 'dsh-prompt-optimizer'
 // 硬依赖只有 llm。HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫
@@ -20,6 +20,8 @@ export interface Config {
   maxTokens: number
   /** 单次优化调用的超时时间(秒);超时后中止模型调用并通知客户端。 */
   timeoutSeconds: number
+  /** 优化模式:full = 诊断分析 + 优化改写;fast = 仅优化(更快)。 */
+  mode: OptimizerMode
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -27,6 +29,7 @@ export const Config: Schema<Config> = Schema.object({
   model: Schema.string(),
   maxTokens: Schema.number().min(1024).max(32768).default(8192),
   timeoutSeconds: Schema.number().min(10).max(600).default(120),
+  mode: Schema.union(['full', 'fast'] as const).default('full'),
 })
 
 const NS = settingsNamespace('prompt-optimizer')
@@ -215,7 +218,7 @@ export function apply(ctx: Context, config: Config) {
         const options: GenerateOptions = {
           provider,
           model,
-          system: buildSystemPrompt(cfg.language),
+          system: buildSystemPrompt(cfg.language, cfg.mode),
           messages: [message],
           maxTokens: cfg.maxTokens,
           signal: abort.signal,

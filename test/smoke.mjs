@@ -78,6 +78,7 @@ function doneOf(res) {
 
 async function setup({ config = {}, llmOverrides = {} } = {}) {
   let route
+  let lastOptions = null
   const ctx = new Context()
   ctx.provide('httpServer', {
     register(r) {
@@ -86,7 +87,8 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
     },
   })
   ctx.provide('llm', {
-    async *stream() {
+    async *stream(options) {
+      lastOptions = options
       for (const line of CANNED.split('\n')) {
         yield { type: 'text-delta', index: 0, text: line + '\n' }
       }
@@ -98,7 +100,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   })
   await ctx.plugin(plugin, config)
   assert.ok(route, '插件应注册 HTTP 路由')
-  return { ctx, handler: route.handler }
+  return { ctx, handler: route.handler, getOptions: () => lastOptions }
 }
 
 // 1. 正常路径:分析 + 优化结果按标记解析
@@ -243,6 +245,26 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   assert.ok(err, '超时后应收到 error 事件')
   assert.match(err.error, /超时/)
   console.log('✓ 8 超时中止并通知(慢)')
+}
+
+// 9. 快速模式:系统提示词不含分析段要求,解析仍走标记通道
+{
+  const { handler, getOptions } = await setup({ config: { mode: 'fast' } })
+  const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  const data = doneOf(res)
+  assert.ok(!getOptions().system.includes('ANALYSIS'), 'fast 模式不应要求 ANALYSIS 段')
+  assert.ok(getOptions().system.includes('OPTIMIZED'), 'fast 模式仍用 OPTIMIZED 标记')
+  assert.match(data.optimized, /资深代码评审/)
+  console.log('✓ 9 快速模式提示词')
+}
+
+// 9b. 默认完整模式:提示词要求 ANALYSIS + OPTIMIZED 双段
+{
+  const { handler, getOptions } = await setup()
+  await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.ok(getOptions().system.includes('ANALYSIS'))
+  assert.ok(getOptions().system.includes('OPTIMIZED'))
+  console.log('✓ 9b 默认完整模式提示词')
 }
 
 console.log('\nsmoke: all passed')
