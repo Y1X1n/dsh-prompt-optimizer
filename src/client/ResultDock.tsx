@@ -4,6 +4,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SparkleIcon } from './SparkleIcon.js'
 import { shouldAutoClose, type OptimizerController } from './controller.js'
+import { useT } from './i18n.js'
 
 export type ResultDockProps = PropsRuntime<'conversation.input.dock'>
 
@@ -114,6 +115,7 @@ const styles = {
 export function createResultDock(controller: OptimizerController) {
   return function OptimizerResultDock(props: ResultDockProps) {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+    const t = useT()
     const [copied, setCopied] = useState(false)
     // controller 是会话间共享的单例:面板只对发起优化的那个会话渲染,
     // 避免切会话后旧结果跟着飘过来、甚至误替换别的会话的输入框。
@@ -163,7 +165,7 @@ export function createResultDock(controller: OptimizerController) {
     if (!owns) return null
     const { result } = state
     // 阶段提示:首 token 前(等待响应)→ 分析诊断 → 输出优化稿,跟随流式段落推进。
-    const stage = state.live?.optimized ? '正在输出优化稿' : state.live?.analysis ? '正在分析诊断' : '等待模型响应'
+    const stage = state.live?.optimized ? t('panel.stage.writing') : state.live?.analysis ? t('panel.stage.analyzing') : t('panel.stage.waiting')
 
     const onCopy = async () => {
       if (!result) return
@@ -186,18 +188,18 @@ export function createResultDock(controller: OptimizerController) {
     }
 
     return (
-      <div style={styles.panel} role="dialog" aria-label="提示词优化">
+      <div style={styles.panel} role="dialog" aria-label={t('panel.aria')}>
         <div style={styles.header}>
           <SparkleIcon size={15} />
-          <span style={styles.title}>提示词优化</span>
+          <span style={styles.title}>{t('panel.title')}</span>
           {result && (
             <span style={styles.modelBadge}>
               {result.provider} / {result.model}
-              {result.fallbackUsed ? ' · 已回退' : ''}
-              {typeof result.durationMs === 'number' ? ` · 用时 ${(result.durationMs / 1000).toFixed(1)}s` : ''}
+              {result.fallbackUsed ? ` · ${t('panel.fallback')}` : ''}
+              {typeof result.durationMs === 'number' ? ` · ${t('panel.duration')} ${(result.durationMs / 1000).toFixed(1)}s` : ''}
             </span>
           )}
-          <button type="button" style={styles.close} title="关闭 (Esc)" onClick={() => controller.close()}>
+          <button type="button" style={styles.close} title={t('panel.closeTitle')} onClick={() => controller.close()}>
             ✕
           </button>
         </div>
@@ -206,19 +208,19 @@ export function createResultDock(controller: OptimizerController) {
           <>
             <div style={styles.loading}>
               <SparkleIcon spinning />
-              {stage}…({elapsed}s,Esc 取消)
+              {stage}…({elapsed}s,{t('panel.escCancel')})
             </div>
             {state.live && (state.live.analysis || state.live.optimized) && (
               <div style={styles.body}>
                 {state.live.analysis && (
                   <>
-                    <div style={styles.sectionTitle}>分析诊断</div>
+                    <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
                     <pre style={styles.pre}>{state.live.analysis}</pre>
                   </>
                 )}
                 {state.live.optimized && (
                   <>
-                    <div style={styles.sectionTitle}>优化结果</div>
+                    <div style={styles.sectionTitle}>{t('panel.optimized')}</div>
                     <div style={styles.optimizedBox}>
                       <pre style={styles.pre}>{state.live.optimized}</pre>
                     </div>
@@ -231,14 +233,14 @@ export function createResultDock(controller: OptimizerController) {
 
         {state.status === 'error' && (
           <>
-            <div style={styles.sectionTitle}>出错了</div>
+            <div style={styles.sectionTitle}>{t('panel.error')}</div>
             <div style={styles.errorText}>{state.error}</div>
             <div style={styles.actions}>
               <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
-                重试
+                {t('panel.retry')}
               </button>
               <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
-                关闭
+                {t('panel.close')}
               </button>
             </div>
           </>
@@ -249,47 +251,41 @@ export function createResultDock(controller: OptimizerController) {
             <div style={styles.body}>
               {result.analysis && (
                 <>
-                  <div style={styles.sectionTitle}>分析诊断</div>
+                  <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
                   <pre style={styles.pre}>{result.analysis}</pre>
                 </>
               )}
-              <div style={styles.sectionTitle}>优化结果</div>
+              <div style={styles.sectionTitle}>{t('panel.optimized')}</div>
               <div style={styles.optimizedBox}>
                 <pre style={styles.pre}>{result.optimized}</pre>
               </div>
-              {result.truncated && (
-                <div style={styles.warnText}>
-                  输出达到 Token 上限被截断。可在 设置 → 插件配置 → 提示词优化 中调高「最大输出 Token」。
-                </div>
-              )}
-              {!result.wellFormed && (
-                <div style={styles.warnText}>模型未完全遵守输出格式,以上内容可能混入多余文字,替换前请扫一眼。</div>
-              )}
+              {result.truncated && <div style={styles.warnText}>{t('panel.truncated')}</div>}
+              {!result.wellFormed && <div style={styles.warnText}>{t('panel.notWellFormed')}</div>}
             </div>
             <div style={styles.actions}>
               {applied ? (
                 <>
-                  <span style={styles.appliedHint}>已替换到输入框 ✓</span>
+                  <span style={styles.appliedHint}>{t('panel.applied')}</span>
                   <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onUndo}>
-                    撤回
+                    {t('panel.undo')}
                   </button>
                   <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
-                    重新优化
+                    {t('panel.reoptimize')}
                   </button>
                   <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
-                    关闭
+                    {t('panel.close')}
                   </button>
                 </>
               ) : (
                 <>
                   <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
-                    替换输入框
+                    {t('panel.replace')}
                   </button>
                   <button type="button" style={styles.actionBtn} onClick={onCopy}>
-                    {copied ? '已复制 ✓' : '复制'}
+                    {copied ? t('panel.copied') : t('panel.copy')}
                   </button>
                   <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
-                    重新优化
+                    {t('panel.reoptimize')}
                   </button>
                 </>
               )}

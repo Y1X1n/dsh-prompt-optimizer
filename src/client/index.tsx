@@ -7,6 +7,7 @@ import { createOptimizeButton } from './OptimizeButton.js'
 import { createResultDock } from './ResultDock.js'
 import { createSettingsCard, type OptimizerSettingsValue } from './SettingsCard.js'
 import { createOptimizerController } from './controller.js'
+import { installLocaleFace, type LocaleFace } from './i18n.js'
 // 发布版(rc)里这两个服务没有携带客户端 Context 合并,这里按实际形状补齐。
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -23,6 +24,12 @@ export const name = 'dsh-prompt-optimizer-client'
 export const inject = ['slots', 'connection', 'remote', 'settingsScope']
 
 export function apply(ctx: ClientContext): void {
+  // 可选消费 locale 服务(dsh-client-locale):存在则界面文案跟随 DSH 界面语言,
+  // 缺席(老版本/非 web)时保持中文,不影响任何其他功能。
+  ctx.inject(['locale'], (lctx) => {
+    installLocaleFace((lctx as unknown as { locale?: LocaleFace }).locale ?? null)
+  })
+
   const scope = ctx.settingsScope.bind<OptimizerSettingsValue>({ namespace: 'prompt-optimizer' })
   const controller = createOptimizerController(ctx, {
     // 与 Host 侧「空字符串视为未设置」的口径一致。

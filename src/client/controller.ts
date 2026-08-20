@@ -77,10 +77,23 @@ function flattenText(content: unknown): string {
 }
 
 /**
+ * 上下文取样:用户消息优先保底。真实 agentic 会话里最近的消息往往是成串的
+ * assistant 步骤碎片(实测一个 30 条消息的会话只有 5 条用户消息),纯按时间取
+ * 最近 N 条会把用户的真实诉求挤出上下文。取「最近 4 条用户消息 + 最近 4 条助手
+ * 回复」按原始顺序合并(总量 ≤8,不再触发条数裁剪),再交预算收敛。
+ */
+function sampleContextTurns(turns: ConversationTurn[]): ConversationTurn[] {
+  const users = turns.map((t, i) => ({ t, i })).filter((x) => x.t.role === 'user').slice(-4)
+  const assistants = turns.map((t, i) => ({ t, i })).filter((x) => x.t.role === 'assistant').slice(-4)
+  const merged = [...users, ...assistants].sort((a, b) => a.i - b.i).map((x) => x.t)
+  return capConversationContext(merged)
+}
+
+/**
  * 从 session.history 事件页提取优化上下文:真实用户输入(user/message 且
  * source.kind 为 'user',排除插件/系统注入的 user 角色消息)+ 助手回复
  * (assistant/message,跳过只承载 usage 的空壳消息)。返回按时间升序,
- * 已按共享预算收敛(最近 8 条 / 1600 字符)。
+ * 已按共享预算收敛(用户消息保底 4 条,总量 ≤8 条 / 1600 字符)。
  */
 export function extractContextTurns(entries: readonly HistoryEntry[]): ConversationTurn[] {
   const turns: ConversationTurn[] = []
@@ -98,7 +111,7 @@ export function extractContextTurns(entries: readonly HistoryEntry[]): Conversat
       if (text) turns.push({ role: 'assistant', text })
     }
   }
-  return capConversationContext(turns)
+  return sampleContextTurns(turns)
 }
 
 /**
@@ -183,7 +196,9 @@ export function createOptimizerController(
         (async (): Promise<ConversationTurn[] | undefined> => {
           if (!(opts.isContextEnabled?.() ?? true)) return undefined
           try {
-            const resp = await ctx.connection.api.sessions.history({ sessionId, maxMessages: 12 }, controller.signal)
+            // 页大小放宽到 24:agentic 会话里 assistant 步骤消息远多于用户消息,
+            // 取样要保证能捞到最近 4 条用户输入(见 sampleContextTurns)。
+            const resp = await ctx.connection.api.sessions.history({ sessionId, maxMessages: 24 }, controller.signal)
             if (resp.result.ok) {
               const turns = extractContextTurns(resp.result.value.events)
               return turns.length ? turns : undefined

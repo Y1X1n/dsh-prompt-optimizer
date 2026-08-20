@@ -185,6 +185,9 @@ async function resolveLowestEffort(
   }
 }
 
+// 路由 → 最低档 effort 缓存的生存期(实例级,挂在 apply 闭包内,见下)。
+const EFFORT_CACHE_TTL = 10 * 60 * 1000
+
 /**
  * 模型路由解析:设置里固定的 'provider/model' → 请求方会话当前选择 → 第一个可用路由。
  * 空字符串视为未设置;provider 路由键不含 '/',模型 id 可以含。无可用路由时返回 undefined。
@@ -231,6 +234,19 @@ interface WebRouteService {
 }
 
 export function apply(ctx: Context, config: Config) {
+  // 路由 → 最低档 effort 的实例级缓存:每次优化点击都会解析一遍,而模型的推理
+  // 档位表极少变化。仅缓存成功结果,失败不缓存——下次点击重试,避免一次目录
+  // 抖动永久挡住钳档。挂在 apply 闭包内:随插件实例生灭,测试间天然隔离。
+  const effortCache = new Map<string, { effort: string; at: number }>()
+  const resolveLowestEffortCached = async (llm: Context['llm'], provider: string, model: string): Promise<string | undefined> => {
+    const key = `${provider}/${model}`
+    const hit = effortCache.get(key)
+    if (hit && Date.now() - hit.at < EFFORT_CACHE_TTL) return hit.effort
+    const effort = await resolveLowestEffort(llm, provider, model)
+    if (effort !== undefined) effortCache.set(key, { effort, at: Date.now() })
+    return effort
+  }
+
   // 设置页命名空间:组合层配置作为 base,用户在 设置→插件配置 中的修改实时生效。
   let current = (): Config => config
   installSettingsSection(ctx, NS, Config, config, {
@@ -374,7 +390,7 @@ export function apply(ctx: Context, config: Config) {
               }
               let effort = sessionEffort
               if (!preferSessionEffort) {
-                effort = (await resolveLowestEffort(ctx.llm, attempt.provider, attempt.model)) ?? sessionEffort
+                effort = (await resolveLowestEffortCached(ctx.llm, attempt.provider, attempt.model)) ?? sessionEffort
               }
               if (effort) {
                 options.reasoningEffort = effort as GenerateOptions['reasoningEffort']

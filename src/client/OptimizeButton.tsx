@@ -3,6 +3,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // 类型级引入,激活 'conversation.input.right' 的 SlotMap 合并声明。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SparkleIcon } from './SparkleIcon.js'
+import { useT } from './i18n.js'
 import type { OptimizerController } from './controller.js'
 
 export type OptimizeButtonProps = PropsRuntime<'conversation.input.right'>
@@ -26,6 +27,7 @@ const buttonStyle = {
 export function createOptimizeButton(controller: OptimizerController) {
   return function OptimizeButton(props: OptimizeButtonProps) {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
+    const t = useT()
     const draft = props.input.draft
     const empty = !draft.trim()
     const loading = state.status === 'loading'
@@ -36,11 +38,11 @@ export function createOptimizeButton(controller: OptimizerController) {
           type="button"
           style={{ ...buttonStyle, ...(empty || loading ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
           disabled={empty || loading}
-          title={empty ? '先在输入框输入提示词' : '分析并优化当前输入的提示词'}
+          title={empty ? t('button.titleEmpty') : t('button.title')}
           onClick={() => void controller.optimize(draft, props.sessionId)}
         >
           <SparkleIcon spinning={loading} />
-          {loading ? '优化中…' : '优化'}
+          {loading ? t('button.optimizing') : t('button.optimize')}
         </button>
       </span>
     )

@@ -7,7 +7,9 @@
 A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the composer, one click analyzes and rewrites the prompt draft in your input box, with results **streamed section by section over SSE**. The optimization call reuses the current session's model route by default (read live on every click — switching models in the session takes effect immediately).
 
 - **Host side**: registers two routes, `POST /dsh-prompt-optimizer/optimize` (SSE streaming) and `POST /dsh-prompt-optimizer/test-model` (connectivity probe), and drives `ctx.llm` for the "analyze + rewrite" call.
-- **Client side**: injects the button into the `conversation.input.right` slot, the result panel into `conversation.input.dock` (a full-width row above the input card, same family as TodoDock — renders on the new-session screen too and never covers the input box), and a collapsible settings card into `settings.plugin.item`.
+- **Client side**: injects the button into the `conversation.input.right` slot, the result panel into `conversation.input.dock` (a full-width row above the input card, same family as TodoDock — renders on the new-session screen too and never covers the input box), and a collapsible settings card into `settings.plugin.item`. UI copy follows the DSH interface language (中文 / English).
+
+![The result panel: five-dimension diagnosis and the rewrite streamed live, with replace/undo/copy; the badge shows the actual route and duration](docs/screenshots/optimize-panel.png)
 
 ## Features
 
@@ -17,7 +19,7 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 - **Fidelity discipline** (inspired by Fishsb/dsh-prompt-enhancer): semantic-equivalence floor, traceability (inferences are marked "unless otherwise specified / by default"), a pre-output element-by-element **fidelity self-check** against drift, an 800-character length discipline for simple tasks, and few-shot examples to stabilize output style.
 - **Lightweight memory chain**: edit our optimized text and click Optimize again, and the previous round's result rides along as a continuity reference (accepted decisions carry over, only your changes are worked on). Same-text retries, cross-session calls, and degraded (non-wellFormed) results never ride; the chain resets the moment you send or close the panel, and it follows the "include context" switch.
 - **Slash-command safe**: input like `/goal help me …` optimizes only the body; the command prefix is re-attached on replace — the command word is never rewritten.
-- **Context aware**: by default carries the session's recent messages (real user input + assistant replies, capped at the last 8 / 1600 chars) so optimization stays aligned with the conversation; the meta-prompt explicitly forbids answering or continuing the context. Empty sessions fall back to the template strategy. Can be disabled in the settings card.
+- **Context aware**: by default carries the session's recent conversation as reference (**user messages are guaranteed a floor** — agentic sessions produce far more assistant step fragments than user input, and naive recency sampling would crowd out what you actually asked), capped at 8 turns / 1600 chars; the meta-prompt explicitly forbids answering or continuing the context. Empty sessions fall back to the template strategy. Can be disabled in the settings card.
 - Result panel: **five-dimension diagnosis** (goal clarity / context / constraints / structure / output spec) + the **full optimized prompt**; actions: **replace the input box** (with **undo**, which auto-invalidates once you edit the replaced text) / copy / re-optimize / close (Esc to cancel). **The panel closes itself after you send the message or clear the input.**
 - Panels are session-scoped: switching sessions never leaks an old result into another session's view or input box.
 - All panel styling uses official Harness design tokens (`--dsw-alias-*`); follows light/dark theme automatically.
@@ -97,10 +99,10 @@ Verified in a real environment (dsh 0.1.0-rc.7, Windows):
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
 - Client: the bundle is picked up by client-modules, appears in `window.__DSH_BOOT__`, and `/plugins/dsh-prompt-optimizer/client.js` is reachable;
 - End to end: a real `ctx.llm` call (DeepSeek route) completes "analysis + rewrite" with correct marker parsing (`wellFormed: true`).
-- Automated tests (`npm test`, 55 cases):
+- Automated tests (`npm test`, 56 cases):
   - `test/smoke.mjs`: 27 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation);
   - `test/prompt.test.mjs`: 12 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
-  - `test/controller.test.mjs`: 16 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, history extraction filtering and degradation, slash-prefix splitting, memory-chain passing and gates, send-to-close decisions, duration recording).
+  - `test/controller.test.mjs`: 17 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, history extraction filtering and degradation, slash-prefix splitting, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
 
 ## How it works
 
@@ -150,6 +152,7 @@ dsh-prompt-optimizer/
 │   └── client/
 │       ├── index.tsx     # Client entry: slot registrations
 │       ├── controller.ts # shared state machine for button/panel + SSE consumption (standalone artifact, unit-testable)
+│       ├── i18n.ts       # zh/en UI copy, follows the DSH interface language
 │       ├── OptimizeButton.tsx   # composer button
 │       ├── ResultDock.tsx       # result panel above the input card (live streaming + undo)
 │       ├── SettingsCard.tsx     # collapsible settings card

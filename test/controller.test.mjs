@@ -5,7 +5,7 @@
  * 运行:先 `npm run build`,再 `node test/controller.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { createOptimizerController, shouldAutoClose, splitCommandPrefix } from '../lib/controller.js'
+import { createOptimizerController, extractContextTurns, shouldAutoClose, splitCommandPrefix } from '../lib/controller.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const enc = new TextEncoder()
@@ -400,6 +400,39 @@ const DONE = {
   assert.equal(shouldAutoClose({ ...base, status: 'loading', draft: '' }), false, '优化中不关')
   assert.equal(shouldAutoClose({ ...base, open: false, draft: '' }), false, '未打开不关')
   console.log('✓ c16 发送即关闭判定')
+}
+
+// c17. 上下文取样:agentic 会话(assistant 碎片远多于用户消息)中用户消息保底 4 条
+{
+  const ev = (type, i, role, text, kind = 'user') => ({
+    event: {
+      type,
+      seq: i,
+      time: i,
+      data: type === 'user/message' ? { role, source: { kind }, content: [{ type: 'text', text }] } : { message: { role, content: [{ type: 'text', text }] } },
+    },
+  })
+  // 12 条:u1 a1 a2 a3 u2 a4 a5 u3 a6 a7 u4 a8(纯按时间取最近 8 条会丢掉 u1 u2)
+  const events = [
+    ev('user/message', 0, 'user', '第一个需求'),
+    ev('assistant/message', 1, 'assistant', '步骤一'),
+    ev('assistant/message', 2, 'assistant', '步骤二'),
+    ev('assistant/message', 3, 'assistant', '步骤三'),
+    ev('user/message', 4, 'user', '第二个需求'),
+    ev('assistant/message', 5, 'assistant', '步骤四'),
+    ev('assistant/message', 6, 'assistant', '步骤五'),
+    ev('user/message', 7, 'user', '第三个需求'),
+    ev('assistant/message', 8, 'assistant', '步骤六'),
+    ev('assistant/message', 9, 'assistant', '步骤七'),
+    ev('user/message', 10, 'user', '第四个需求'),
+    ev('assistant/message', 11, 'assistant', '步骤八'),
+  ]
+  const turns = extractContextTurns(events)
+  const userTexts = turns.filter((t) => t.role === 'user').map((t) => t.text)
+  assert.deepEqual(userTexts, ['第一个需求', '第二个需求', '第三个需求', '第四个需求'], '全部 4 条用户消息必须保底')
+  assert.ok(turns.length <= 8, '总量不超 8 条')
+  assert.ok(turns[0].text === '第一个需求' && turns.at(-1).text === '步骤八', '保持原始时间顺序')
+  console.log('✓ c17 上下文取样用户消息保底')
 }
 
 console.log('\ncontroller: all passed')

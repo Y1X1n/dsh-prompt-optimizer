@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-client-connection/client'
+import { useT } from './i18n.js'
 
 /** 与 Host 侧 Config 对应的设置分节形状(仅客户端使用)。 */
 export interface OptimizerSettingsValue {
@@ -141,6 +142,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       (callback) => scope.subscribe(callback),
       () => scope.getSnapshot(),
     )
+    const t = useT()
     const value = snap.value ?? {}
 
     // 模型下拉需要目录:挂载时拉取一次,失败或后续新增 provider 时可手动刷新。
@@ -177,9 +179,9 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         })
         const data = await resp.json().catch(() => null)
         if (data?.ok) {
-          setTest({ status: 'ok', message: `连接正常:${data.provider} / ${data.model}(${data.latencyMs}ms)` })
+          setTest({ status: 'ok', message: t('settings.test.ok', { provider: data.provider, model: data.model, latencyMs: data.latencyMs }) })
         } else {
-          setTest({ status: 'fail', message: String(data?.error ?? `请求失败(HTTP ${resp.status})`) })
+          setTest({ status: 'fail', message: String(data?.error ?? `HTTP ${resp.status}`) })
         }
       } catch (cause) {
         setTest({ status: 'fail', message: cause instanceof Error ? cause.message : String(cause) })
@@ -210,21 +212,21 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       <section style={styles.card}>
         <button type="button" style={styles.headerBtn} onClick={toggle} aria-expanded={expanded}>
           <span style={{ ...styles.chevron, transform: expanded ? 'rotate(90deg)' : 'none' }}>▸</span>
-          <span style={styles.title}>提示词优化</span>
-          <span style={styles.headerDesc}>发送栏「优化」按钮(✨ 图标)的行为配置</span>
+          <span style={styles.title}>{t('panel.title')}</span>
+          <span style={styles.headerDesc}>{t('settings.desc')}</span>
         </button>
         {expanded && (
           <div style={styles.body}>
-        {snap.status === 'loading' && <div style={styles.hint}>设置加载中…</div>}
+        {snap.status === 'loading' && <div style={styles.hint}>{t('settings.loading')}</div>}
         {snap.status === 'unavailable' && (
-          <div style={styles.hint}>当前连接不可写设置(远程页面为内存模式),改动仅在本次会话生效。</div>
+          <div style={styles.hint}>{t('settings.unavailable')}</div>
         )}
 
         <div style={styles.row}>
-          <span style={styles.label}>优化用模型</span>
+          <span style={styles.label}>{t('settings.model')}</span>
           {groups === null ? (
             <span style={styles.hint}>
-              {catalogState === 'error' ? '模型目录加载失败,点右侧按钮重试。' : '模型目录加载中…'}
+              {catalogState === 'error' ? t('settings.catalog.error') : t('settings.catalog.loading')}
             </span>
           ) : (
             <select
@@ -232,7 +234,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
               value={value.model ?? FOLLOW_SESSION}
               onChange={(e) => void scope.set('model', e.target.value)}
             >
-              <option value={FOLLOW_SESSION}>跟随当前会话(默认)</option>
+              <option value={FOLLOW_SESSION}>{t('settings.model.follow')}</option>
               {groups.map((g) => (
                 <optgroup key={g.id} label={g.name}>
                   {g.models.map((m) => (
@@ -248,22 +250,22 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
             type="button"
             style={{ ...styles.refreshBtn, ...(catalogState === 'loading' ? { opacity: 0.45, cursor: 'default' } : {}) }}
             disabled={catalogState === 'loading'}
-            title="重新拉取模型目录(新增提供方/模型后使用)"
+            title={t('settings.refreshTitle')}
             onClick={() => void loadCatalog()}
           >
-            ↻ 刷新
+            {t('settings.refresh')}
           </button>
         </div>
 
         {groups !== null && (
           <div style={styles.row}>
-            <span style={styles.label}>回退模型</span>
+            <span style={styles.label}>{t('settings.fallbackModel')}</span>
             <select
               style={styles.input}
               value={value.fallbackModel ?? ''}
               onChange={(e) => void scope.set('fallbackModel', e.target.value)}
             >
-              <option value="">无(默认)</option>
+              <option value="">{t('settings.fallbackModel.none')}</option>
               {groups.map((g) => (
                 <optgroup key={g.id} label={g.name}>
                   {g.models.map((m) => (
@@ -278,14 +280,14 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         )}
 
         <div style={styles.row}>
-          <span style={styles.label}>模型连通性</span>
+          <span style={styles.label}>{t('settings.test')}</span>
           <button
             type="button"
             style={{ ...styles.refreshBtn, ...(test.status === 'testing' ? { opacity: 0.45, cursor: 'default' } : {}) }}
             disabled={test.status === 'testing'}
             onClick={() => void runTest()}
           >
-            {test.status === 'testing' ? '测试中…' : '测试连接'}
+            {test.status === 'testing' ? t('settings.test.running') : t('settings.test.run')}
           </button>
           {test.message && (
             <span style={test.status === 'fail' ? styles.fieldError : styles.hint}>{test.message}</span>
@@ -293,7 +295,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         </div>
 
         <div style={styles.row}>
-          <span style={styles.label}>输出语言</span>
+          <span style={styles.label}>{t('settings.language')}</span>
           <select
             style={{ ...styles.input, maxWidth: 160 }}
             value={value.language ?? 'zh'}
@@ -305,85 +307,85 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         </div>
 
         <div style={styles.row}>
-          <span style={styles.label}>优化模式</span>
+          <span style={styles.label}>{t('settings.mode')}</span>
           <select
             style={{ ...styles.input, maxWidth: 260 }}
             value={value.mode ?? 'full'}
             onChange={(e) => void scope.set('mode', e.target.value)}
           >
-            <option value="full">完整(分析诊断 + 优化)</option>
-            <option value="fast">快速(仅优化,等待约减半)</option>
+            <option value="full">{t('settings.mode.full')}</option>
+            <option value="fast">{t('settings.mode.fast')}</option>
           </select>
         </div>
 
         <div style={styles.row}>
-          <span style={styles.label}>推理强度</span>
+          <span style={styles.label}>{t('settings.effort')}</span>
           <select
             style={{ ...styles.input, maxWidth: 260 }}
             value={value.reasoningEffort ?? 'lowest'}
             onChange={(e) => void scope.set('reasoningEffort', e.target.value)}
           >
-            <option value="lowest">降到最低档(默认,推理模型更快)</option>
-            <option value="session">跟随当前会话</option>
+            <option value="lowest">{t('settings.effort.lowest')}</option>
+            <option value="session">{t('settings.effort.session')}</option>
           </select>
         </div>
 
         <div style={styles.row}>
-          <span style={styles.label}>携带上下文</span>
+          <span style={styles.label}>{t('settings.includeContext')}</span>
           <select
             style={{ ...styles.input, maxWidth: 260 }}
             value={value.includeContext === false ? 'off' : 'on'}
             onChange={(e) => void scope.set('includeContext', e.target.value === 'on')}
           >
-            <option value="on">开:参考最近对话,优化方向更贴合(默认)</option>
-            <option value="off">关:仅看草稿本身</option>
+            <option value="on">{t('settings.includeContext.on')}</option>
+            <option value="off">{t('settings.includeContext.off')}</option>
           </select>
         </div>
 
         <TextField
-          label="最大输出 Token"
+          label={t('settings.maxTokens')}
           value={String(value.maxTokens ?? 8192)}
           placeholder="8192"
           validate={(v) => {
             const n = Number.parseInt(v, 10)
-            return Number.isFinite(n) && n >= 1024 && n <= 32768 ? null : '请输入 1024–32768 之间的数字'
+            return Number.isFinite(n) && n >= 1024 && n <= 32768 ? null : t('settings.validate.maxTokens')
           }}
           onCommit={(v) => void scope.set('maxTokens', Number.parseInt(v, 10))}
         />
         <TextField
-          label="超时时间(秒)"
+          label={t('settings.timeout')}
           value={String(value.timeoutSeconds ?? 120)}
           placeholder="120"
           validate={(v) => {
             const n = Number.parseInt(v, 10)
-            return Number.isFinite(n) && n >= 10 && n <= 600 ? null : '请输入 10–600 之间的数字'
+            return Number.isFinite(n) && n >= 10 && n <= 600 ? null : t('settings.validate.timeout')
           }}
           onCommit={(v) => void scope.set('timeoutSeconds', Number.parseInt(v, 10))}
         />
         <TextField
-          label="采样温度"
+          label={t('settings.temperature')}
           value={String(value.temperature ?? 0.2)}
           placeholder="0.2"
           validate={(v) => {
             const n = Number.parseFloat(v)
-            return Number.isFinite(n) && n >= 0 && n <= 2 ? null : '请输入 0–2 之间的数字'
+            return Number.isFinite(n) && n >= 0 && n <= 2 ? null : t('settings.validate.temperature')
           }}
           onCommit={(v) => void scope.set('temperature', Number.parseFloat(v))}
         />
 
         <div style={styles.row}>
-          <span style={styles.label}>输出上限自适应</span>
+          <span style={styles.label}>{t('settings.autoMaxTokens')}</span>
           <select
             style={{ ...styles.input, maxWidth: 260 }}
             value={value.autoMaxTokens === false ? 'off' : 'on'}
             onChange={(e) => void scope.set('autoMaxTokens', e.target.value === 'on')}
           >
-            <option value="on">开:长草稿自动提高输出上限(默认)</option>
-            <option value="off">关:固定用上面的最大输出 Token</option>
+            <option value="on">{t('settings.autoMaxTokens.on')}</option>
+            <option value="off">{t('settings.autoMaxTokens.off')}</option>
           </select>
         </div>
         {!snap.writable && snap.status === 'ready' && (
-          <div style={styles.hint}>当前为内存模式:设置不会持久化。</div>
+          <div style={styles.hint}>{t('settings.memoryOnly')}</div>
         )}
           </div>
         )}
