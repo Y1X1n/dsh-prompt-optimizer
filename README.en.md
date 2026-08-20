@@ -78,7 +78,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## Compatibility
 
-- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); last verified 2026-08-19 (Windows, real-profile install + Web routes / client bundle / end-to-end LLM call).
+- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); also verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call).
 - The HTTP carrier service name has drifted between releases (`httpServer` in the npm 0.0.1-rc.x type packages, `webServer` in the 0.1.0-rc.x runtime): the plugin waits on both names via `ctx.inject` with no static hard dependency — if the name changes again, only this plugin's routes fail to register (with a log warning after 10s); the Harness startup is never dragged down.
 - Client and Host must be the same version (the SSE protocol is a private contract): after upgrading, restart `dsh web` and refresh the browser.
 
@@ -93,7 +93,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## Verification status
 
-Verified in a real environment (dsh 0.1.0-rc.7, Windows):
+Verified in a real environment (dsh 0.1.0-rc.8, Windows):
 
 - Composition-layer load: `--dump-config` shows the `# == dsh-prompt-optimizer` layer;
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
