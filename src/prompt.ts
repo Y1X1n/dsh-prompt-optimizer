@@ -302,3 +302,24 @@ export function parsePartialOptimizerOutput(raw: string): { analysis: string; op
   }
   return { analysis, optimized }
 }
+
+export interface PartialCompaction {
+  /** 压缩后的等价缓冲(OPTIMIZED 标记已确认时才有);未触发为 null。 */
+  compacted: string | null
+  /** 本次压缩定格出的分析段(无 ANALYSIS 标记或标记在后时为空串)。 */
+  analysis: string
+}
+
+/**
+ * 流式缓冲压缩(R14):OPTIMIZED 标记确认后,分析段与草稿前缀已不再变化,
+ * 把 OPTIMIZED 标记之前的全部内容裁掉、换成仅含标记的最小前缀——后续
+ * parsePartialOptimizerOutput 对新缓冲的解析语义不变,而缓冲体积不再随
+ * 长输出无界增长(每次合帧的正则扫描也只在尾部窗口进行)。
+ */
+export function compactPartialBuffer(raw: string): PartialCompaction {
+  const o = findMarker(raw, 'OPTIMIZED')
+  if (!o) return { compacted: null, analysis: '' }
+  const a = findMarker(raw, 'ANALYSIS')
+  const analysis = a && a.index < o.index ? raw.slice(a.index + a.length, o.index).trim() : ''
+  return { compacted: `${MARKERS.optimized}\n${raw.slice(o.index + o.length)}`, analysis }
+}

@@ -2,7 +2,7 @@
  * prompt.ts 标记解析的单元测试。运行:先 `npm run build`,再 `node test/prompt.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
+import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPartialBuffer, estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
 
 // 1. 标准标记:正常分段
 {
@@ -185,6 +185,33 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTo
   assert.ok(both.indexOf('conversation-context') < both.indexOf('previous-optimized'))
   assert.ok(both.indexOf('previous-optimized') < both.indexOf('<prompt-draft>'))
   console.log('✓ p12 记忆链载荷')
+}
+
+// 13. R14 流式缓冲压缩:OPTIMIZED 确认后裁掉前缀,解析语义不变
+{
+  // 无 OPTIMIZED 标记:不压缩
+  const none = compactPartialBuffer('<<<ANALYSIS>>>\n分析到一半')
+  assert.equal(none.compacted, null)
+  assert.equal(none.analysis, '')
+
+  // 有标记:前缀(含草稿/分析段)全部裁掉,定格出分析段
+  const longPrefix = 'x'.repeat(10_000)
+  const raw = `${longPrefix}\n<<<ANALYSIS>>>\n五维诊断全文\n<<<OPTIMIZED>>>\n优化输出到一半`
+  const comp = compactPartialBuffer(raw)
+  assert.ok(comp.compacted.length < 100, '压缩后缓冲只剩最小前缀 + 尾部窗口')
+  assert.equal(comp.analysis, '五维诊断全文')
+
+  // 压缩后继续追加 delta,parsePartialOptimizerOutput 语义与不压缩时一致
+  const grown = parsePartialOptimizerOutput(comp.compacted + ',继续输出')
+  assert.equal(grown.optimized, '优化输出到一半,继续输出')
+  const noCompact = parsePartialOptimizerOutput(raw + ',继续输出')
+  assert.deepEqual(grown, { analysis: '', optimized: noCompact.optimized }, '压缩前后 optimized 解析等价')
+
+  // 压缩可重复作用(解析语义等价,非严格字节幂等):再次压缩后 optimized 不丢字
+  const again = compactPartialBuffer(comp.compacted)
+  assert.equal(parsePartialOptimizerOutput(again.compacted).optimized, '优化输出到一半')
+  assert.equal(again.analysis, '')
+  console.log('✓ p13 流式缓冲压缩')
 }
 
 console.log('\nprompt: all passed')

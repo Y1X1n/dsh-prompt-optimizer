@@ -23,7 +23,26 @@ export const name = 'dsh-prompt-optimizer-client'
 // settingsScope 的绑定内部依赖 connection(读写传输)与 remote(失效通知)。
 export const inject = ['slots', 'connection', 'remote', 'settingsScope']
 
+/** 本插件交互元素的公共类名(U11:focus-visible 焦点环走这一份注入的样式)。 */
+export const BUTTON_CLASS = 'dsh-po-btn'
+
+/**
+ * U11:键盘可达性。inline style 表达不了 :focus-visible 伪类,注入一段全局样式
+ * 为所有 .dsh-po-btn 元素补焦点环;幂等,重复调用只插一次。
+ */
+function ensureFocusStyles(): void {
+  if (typeof document === 'undefined') return
+  const ID = 'dsh-prompt-optimizer-focus-styles'
+  if (document.getElementById(ID)) return
+  const style = document.createElement('style')
+  style.id = ID
+  style.textContent =
+    '.dsh-po-btn:focus-visible{outline:2px solid var(--dsw-alias-state-focus-ring, #4f7cf7);outline-offset:2px;border-radius:4px;}'
+  document.head.appendChild(style)
+}
+
 export function apply(ctx: ClientContext): void {
+  ensureFocusStyles()
   // 可选消费 locale 服务(dsh-client-locale):存在则界面文案跟随 DSH 界面语言,
   // 缺席(老版本/非 web)时保持中文,不影响任何其他功能。
   ctx.inject(['locale'], (lctx) => {
@@ -34,8 +53,10 @@ export function apply(ctx: ClientContext): void {
   const controller = createOptimizerController(ctx, {
     // 与 Host 侧「空字符串视为未设置」的口径一致。
     isModelPinned: () => Boolean(scope.getSnapshot().value?.model?.trim()),
-    // 与 Host 侧「includeContext 缺省视为开」的口径一致。
-    isContextEnabled: () => scope.getSnapshot().value?.includeContext !== false,
+    // 与 Host 侧「includeContext 缺省视为开」的口径一致(R28)。
+    isContextEnabled: () => scope.getSnapshot().value?.includeContext ?? true,
+    // R21:看门狗 = 设置超时秒数 + 5s 余量(正常时 Host 的超时错误先到达,文案更友好)。
+    getWatchdogMs: () => ((scope.getSnapshot().value?.timeoutSeconds ?? 120) + 5) * 1000,
   })
 
   // 发送栏工具行右区:发送按钮旁的「优化」入口(带 ✨ 图标)。

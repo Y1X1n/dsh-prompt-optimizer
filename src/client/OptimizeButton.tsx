@@ -21,6 +21,8 @@ const buttonStyle = {
   color: 'var(--dsw-alias-label-primary, inherit)',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
+  // U4:预留最宽文案(「优化中…」/「Optimizing…」)的宽度,状态切换不引起工具栏抖动。
+  minWidth: 92,
 } as const
 
 /** 发送栏工具行右区的触发按钮;结果面板由 conversation.input.dock 槽位的 Dock 渲染。 */
@@ -34,7 +36,7 @@ export function createOptimizeButton(controller: OptimizerController) {
 
     return (
       <span style={{ display: 'inline-flex' }}>
-        <button
+        <button className="dsh-po-btn"
           type="button"
           style={{ ...buttonStyle, ...(empty || loading ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
           disabled={empty || loading}

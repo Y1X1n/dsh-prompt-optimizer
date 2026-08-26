@@ -61,19 +61,36 @@ const styles = {
     fontSize: 14,
     padding: '0 4px',
   } as const,
-  body: { maxHeight: '26vh', overflowY: 'auto', paddingRight: 4 } as const,
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-    margin: '6px 0 2px',
-  } as const,
-  pre: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' } as const,
+  // U5:分析与优化各自独立滚动区(原先单容器 maxHeight 嵌套出现双滚动条),
+  // 长内容不再互相挤压;外层 body 不限高,滚动归属到各段内部。
+  body: { paddingRight: 4 } as const,
+  analysisBody: { maxHeight: '16vh', overflowY: 'auto', marginTop: 2 } as const,
   optimizedBox: {
     background: 'var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.08))',
     borderRadius: 6,
     padding: '6px 8px',
+    maxHeight: '26vh',
+    overflowY: 'auto',
+    marginTop: 2,
   } as const,
+  sectionTitle: {
+    // U5:段落标题可点击折叠;去掉默认按钮外观。
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 11,
+    fontWeight: 600,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+    margin: '6px 0 2px',
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    font: 'inherit',
+    cursor: 'pointer',
+    textAlign: 'left',
+  } as const,
+  chevron: { fontSize: 9, transition: 'transform 0.15s ease' } as const,
+  pre: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' } as const,
   actions: { display: 'flex', gap: 8, marginTop: 8 } as const,
   actionBtn: {
     display: 'inline-flex',
@@ -92,15 +109,34 @@ const styles = {
     color: 'var(--dsw-alias-label-primary-inverted, #fff)',
   } as const,
   errorText: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', whiteSpace: 'pre-wrap' } as const,
-  appliedHint: {
-    alignSelf: 'center',
-    fontSize: 12,
+  // U7/O6:头部状态条(绿色描边小徽章)。
+  statusChip: {
+    fontSize: 11,
     color: 'var(--dsw-alias-state-success-primary, #2da44e)',
+    border: '1px solid currentColor',
+    borderRadius: 999,
+    padding: '0 8px',
+    whiteSpace: 'nowrap',
   } as const,
-  warnText: {
+  // U10/R5:质量警示(truncated / notWellFormed)从灰色小字升级为描边警示框,
+  // 让「替换前请检查」被真正看到;notWellFormed 横幅置于内容区顶部(R5)。
+  warnBanner: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
     marginTop: 8,
+    padding: '6px 8px',
+    fontSize: 12,
+    lineHeight: 1.5,
+    borderRadius: 6,
+    border: '1px solid var(--dsw-alias-state-warn-primary, #d4a72c)',
+    background: 'var(--dsw-alias-state-warn-bg, rgba(212, 167, 44, 0.12))',
+    color: 'var(--dsw-alias-state-warn-primary, #d4a72c)',
+  } as const,
+  cancelledHint: {
     fontSize: 12,
     color: 'var(--dsw-alias-state-warn-primary, #d4a72c)',
+    padding: '4px 0 2px',
   } as const,
   loading: {
     display: 'flex',
@@ -117,6 +153,10 @@ export function createResultDock(controller: OptimizerController) {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
     const t = useT()
     const [copied, setCopied] = useState(false)
+    // U5:分析诊断段折叠态(默认展开)——长分析可收起,聚焦优化稿本身。
+    const [analysisOpen, setAnalysisOpen] = useState(true)
+    // O6:撤回后的正向反馈——头部短暂显示「已撤回 ✓」,避免用户以为没生效。
+    const [undoneFlash, setUndoneFlash] = useState(false)
     // controller 是会话间共享的单例:面板只对发起优化的那个会话渲染,
     // 避免切会话后旧结果跟着飘过来、甚至误替换别的会话的输入框。
     const owns = state.open && state.last?.sessionId === props.sessionId
@@ -124,7 +164,10 @@ export function createResultDock(controller: OptimizerController) {
     useEffect(() => {
       if (!owns) return
       const onKey = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') controller.close()
+        if (event.key !== 'Escape') return
+        // O2:优化中 Esc = 取消(保留已生成部分并定格展示);其余状态 Esc = 直接关闭。
+        if (controller.getSnapshot().status === 'loading') controller.cancel()
+        else controller.close()
       }
       document.addEventListener('keydown', onKey)
       return () => document.removeEventListener('keydown', onKey)
@@ -162,10 +205,38 @@ export function createResultDock(controller: OptimizerController) {
       return () => clearInterval(timer)
     }, [state.status])
 
+    // O6:「已撤回 ✓」短暂展示后自动消退。
+    useEffect(() => {
+      if (!undoneFlash) return
+      const timer = setTimeout(() => setUndoneFlash(false), 2500)
+      return () => clearTimeout(timer)
+    }, [undoneFlash])
+
     if (!owns) return null
     const { result } = state
     // 阶段提示:首 token 前(等待响应)→ 分析诊断 → 输出优化稿,跟随流式段落推进。
     const stage = state.live?.optimized ? t('panel.stage.writing') : state.live?.analysis ? t('panel.stage.analyzing') : t('panel.stage.waiting')
+
+    // 流式实况段(loading 与 cancelled 共用;U5 限高滚动,不遮挡阶段行)。
+    const liveBody =
+      state.live && (state.live.analysis || state.live.optimized) ? (
+        <div style={{ ...styles.body, maxHeight: '34vh', overflowY: 'auto', marginTop: 2 }}>
+          {state.live.analysis && (
+            <>
+              <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
+              <pre style={styles.pre}>{state.live.analysis}</pre>
+            </>
+          )}
+          {state.live.optimized && (
+            <>
+              <div style={styles.sectionTitle}>{t('panel.optimized')}</div>
+              <div style={styles.optimizedBox}>
+                <pre style={styles.pre}>{state.live.optimized}</pre>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null
 
     const onCopy = async () => {
       if (!result) return
@@ -185,6 +256,7 @@ export function createResultDock(controller: OptimizerController) {
       if (!applied) return
       props.inputActions.setDraft(applied.backup)
       controller.clearApplied()
+      setUndoneFlash(true)
     }
 
     return (
@@ -193,13 +265,19 @@ export function createResultDock(controller: OptimizerController) {
           <SparkleIcon size={15} />
           <span style={styles.title}>{t('panel.title')}</span>
           {result && (
-            <span style={styles.modelBadge}>
+            <span
+              style={styles.modelBadge}
+              title={result.fallbackUsed && result.fallbackReason ? `${t('panel.fallback')}: ${result.fallbackReason}` : undefined}
+            >
               {result.provider} / {result.model}
               {result.fallbackUsed ? ` · ${t('panel.fallback')}` : ''}
               {typeof result.durationMs === 'number' ? ` · ${t('panel.duration')} ${(result.durationMs / 1000).toFixed(1)}s` : ''}
             </span>
           )}
-          <button type="button" style={styles.close} title={t('panel.closeTitle')} onClick={() => controller.close()}>
+          {/* U7/O6:头部状态条——已替换常驻;撤回动作短暂反馈。 */}
+          {applied && <span style={styles.statusChip}>{t('panel.appliedShort')}</span>}
+          {!applied && undoneFlash && <span style={styles.statusChip}>{t('panel.undoneShort')}</span>}
+          <button className="dsh-po-btn" type="button" style={styles.close} title={t('panel.closeTitle')} onClick={() => controller.close()}>
             ✕
           </button>
         </div>
@@ -210,24 +288,22 @@ export function createResultDock(controller: OptimizerController) {
               <SparkleIcon spinning />
               {stage}…({elapsed}s,{t('panel.escCancel')})
             </div>
-            {state.live && (state.live.analysis || state.live.optimized) && (
-              <div style={styles.body}>
-                {state.live.analysis && (
-                  <>
-                    <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
-                    <pre style={styles.pre}>{state.live.analysis}</pre>
-                  </>
-                )}
-                {state.live.optimized && (
-                  <>
-                    <div style={styles.sectionTitle}>{t('panel.optimized')}</div>
-                    <div style={styles.optimizedBox}>
-                      <pre style={styles.pre}>{state.live.optimized}</pre>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {liveBody}
+          </>
+        )}
+
+        {state.status === 'cancelled' && (
+          <>
+            <div style={styles.cancelledHint}>{t('panel.cancelled')}</div>
+            {liveBody}
+            <div style={styles.actions}>
+              <button className="dsh-po-btn" type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} title={t('panel.reoptimizeTitle')} onClick={() => controller.retry()}>
+                {t('panel.reoptimize')}
+              </button>
+              <button className="dsh-po-btn" type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+                {t('panel.close')}
+              </button>
+            </div>
           </>
         )}
 
@@ -236,10 +312,10 @@ export function createResultDock(controller: OptimizerController) {
             <div style={styles.sectionTitle}>{t('panel.error')}</div>
             <div style={styles.errorText}>{state.error}</div>
             <div style={styles.actions}>
-              <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+              <button className="dsh-po-btn" type="button" style={styles.actionBtn} title={t('panel.reoptimizeTitle')} onClick={() => controller.retry()}>
                 {t('panel.retry')}
               </button>
-              <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+              <button className="dsh-po-btn" type="button" style={styles.actionBtn} onClick={() => controller.close()}>
                 {t('panel.close')}
               </button>
             </div>
@@ -248,44 +324,66 @@ export function createResultDock(controller: OptimizerController) {
 
         {state.status === 'done' && result && (
           <>
+            {/* R5:格式退化(结果可能混入多余文字)是最需要被看到的质量警示,置于顶部。 */}
+            {!result.wellFormed && (
+              <div style={{ ...styles.warnBanner, marginTop: 0, marginBottom: 8 }}>
+                <span aria-hidden>⚠</span>
+                <span>{t('panel.notWellFormed')}</span>
+              </div>
+            )}
             <div style={styles.body}>
               {result.analysis && (
                 <>
-                  <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
-                  <pre style={styles.pre}>{result.analysis}</pre>
+                  <button className="dsh-po-btn" type="button" style={styles.sectionTitle} onClick={() => setAnalysisOpen((v) => !v)} aria-expanded={analysisOpen}>
+                    <span style={{ ...styles.chevron, transform: analysisOpen ? 'rotate(90deg)' : 'none' }}>▸</span>
+                    {t('panel.analysis')}
+                  </button>
+                  {analysisOpen && (
+                    <div style={styles.analysisBody}>
+                      <pre style={styles.pre}>{result.analysis}</pre>
+                    </div>
+                  )}
                 </>
               )}
-              <div style={styles.sectionTitle}>{t('panel.optimized')}</div>
+              <div style={{ ...styles.sectionTitle, cursor: 'default' }}>{t('panel.optimized')}</div>
               <div style={styles.optimizedBox}>
                 <pre style={styles.pre}>{result.optimized}</pre>
               </div>
-              {result.truncated && <div style={styles.warnText}>{t('panel.truncated')}</div>}
-              {!result.wellFormed && <div style={styles.warnText}>{t('panel.notWellFormed')}</div>}
+              {result.truncated && (
+                <div style={styles.warnBanner}>
+                  <span aria-hidden>⚠</span>
+                  <span>{t('panel.truncated')}</span>
+                </div>
+              )}
             </div>
             <div style={styles.actions}>
               {applied ? (
                 <>
-                  <span style={styles.appliedHint}>{t('panel.applied')}</span>
-                  <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onUndo}>
+                  <button className="dsh-po-btn" type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onUndo}>
                     {t('panel.undo')}
                   </button>
-                  <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                  <button className="dsh-po-btn" type="button" style={styles.actionBtn} title={t('panel.reoptimizeTitle')} onClick={() => controller.retry()}>
                     {t('panel.reoptimize')}
                   </button>
-                  <button type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+                  <button className="dsh-po-btn" type="button" style={styles.actionBtn} onClick={() => controller.close()}>
                     {t('panel.close')}
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
+                  <button className="dsh-po-btn" type="button" style={{ ...styles.actionBtn, ...styles.primaryBtn }} onClick={onReplace}>
                     {t('panel.replace')}
                   </button>
-                  <button type="button" style={styles.actionBtn} onClick={onCopy}>
+                  <button className="dsh-po-btn" type="button" style={styles.actionBtn} onClick={onCopy}>
                     {copied ? t('panel.copied') : t('panel.copy')}
                   </button>
-                  <button type="button" style={styles.actionBtn} onClick={() => controller.retry()}>
+                  {/* O3:提示重试语义——改稿续接(带 previous),同文则是全新生成。 */}
+                  <button className="dsh-po-btn" type="button" style={styles.actionBtn} title={t('panel.reoptimizeTitle')} onClick={() => controller.retry()}>
                     {t('panel.reoptimize')}
+                  </button>
+                  {/* U9:未替换态补明确的关闭出口,「先看看再说」的用户不必找 ✕ 或按 Esc。 */}
+                  <button className="dsh-po-btn" type="button" style={styles.actionBtn} onClick={() => controller.close()}>
+                    {t('panel.close')}
                   </button>
                 </>
               )}

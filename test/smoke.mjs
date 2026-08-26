@@ -380,6 +380,8 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   assert.equal(data.provider, 'good-p')
   assert.equal(data.model, 'good-m')
   assert.equal(data.fallbackUsed, true)
+  // O12:回退原因随 done 下发,供客户端徽章 tooltip 展示
+  assert.match(String(data.fallbackReason), /provider down/)
   assert.match(data.optimized, /回退路由产出/)
   console.log('✓ 13 主路由失败自动回退')
 }

@@ -1,6 +1,6 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HistoryEntry, SessionId } from '@deepseek-ai/dsh-client-connection/client'
-import { capConversationContext, parsePartialOptimizerOutput, type ConversationTurn } from '../prompt.js'
+import { capConversationContext, compactPartialBuffer, parsePartialOptimizerOutput, type ConversationTurn } from '../prompt.js'
 
 export interface OptimizeResult {
   analysis: string
@@ -11,16 +11,19 @@ export interface OptimizeResult {
   model: string
   /** 主路由失败、实际由回退路由产出时为 true。 */
   fallbackUsed: boolean
+  /** O12:触发回退的主路由失败原因(回退未发生时为空),用于徽章 tooltip。 */
+  fallbackReason?: string
   /** 从点击到 done 的客户端实测耗时(毫秒),含会话查询与排队等待。 */
   durationMs?: number
 }
 
 export interface OptimizerState {
   open: boolean
-  status: 'idle' | 'loading' | 'done' | 'error'
+  /** cancelled = loading 中被用户取消(O2):面板保持打开,冻结展示已生成的部分。 */
+  status: 'idle' | 'loading' | 'done' | 'error' | 'cancelled'
   error: string | null
   result: OptimizeResult | null
-  /** 流式进行中的分段实况,仅 loading 期间有值。 */
+  /** 流式进行中的分段实况,仅 loading/cancelled 期间有值(cancelled 时为取消瞬间的定格)。 */
   live: { analysis: string; optimized: string } | null
   /** 最近一次成功发起的请求,供「重新优化」复用;prefix 为斜杠命令前缀(替换时拼回)。 */
   last: { text: string; sessionId: SessionId; prefix?: string } | null
@@ -34,12 +37,14 @@ const INITIAL: OptimizerState = { open: false, status: 'idle', error: null, resu
 
 /**
  * 拆斜杠命令前缀:「/goal 帮我……」只优化正文,替换时拼回前缀,避免命令词被改写。
- * 正文为空(只敲了命令)或不像命令(如 /path/to/file)时不拆,整段按普通文本处理。
+ * 正文为空(只敲了命令,如 "/goal")时返回 commandOnly:true,调用方直接提示、
+ * 不发请求(O11:把命令词本身拿去优化只会得到垃圾输出);不像命令(如 /path/to/file)不拆。
  */
-export function splitCommandPrefix(text: string): { prefix?: string; body: string } {
+export function splitCommandPrefix(text: string): { prefix?: string; body: string; commandOnly?: boolean } {
   const trimmed = text.trim()
-  const match = /^(\/[A-Za-z][\w-]*)\s+([\s\S]+)$/.exec(trimmed)
-  if (!match || !match[2].trim()) return { body: trimmed }
+  const match = /^(\/[A-Za-z][\w-]*)(?:\s+([\s\S]+))?$/.exec(trimmed)
+  if (!match) return { body: trimmed }
+  if (!match[2] || !match[2].trim()) return { body: trimmed, commandOnly: true }
   return { prefix: match[1], body: match[2].trim() }
 }
 
@@ -51,7 +56,7 @@ export function splitCommandPrefix(text: string): { prefix?: string; body: strin
  */
 export function shouldAutoClose(input: {
   open: boolean
-  status: 'idle' | 'loading' | 'done' | 'error'
+  status: 'idle' | 'loading' | 'done' | 'error' | 'cancelled'
   draft: string
   prevRunning: boolean
   running: boolean
@@ -124,7 +129,16 @@ export function extractContextTurns(entries: readonly HistoryEntry[]): Conversat
  */
 export function createOptimizerController(
   ctx: ClientContext,
-  opts: { isModelPinned?: () => boolean; isContextEnabled?: () => boolean } = {},
+  opts: {
+    isModelPinned?: () => boolean
+    isContextEnabled?: () => boolean
+    /**
+     * R21 客户端超时看门狗的总时长(毫秒)。由入口按设置里的 timeoutSeconds 计算
+     * (设置秒数 × 1000 + 5s 余量);缺省 125s。看门狗兜底 Host 挂死/网络黑洞——
+     * 正常情况下 Host 会先到超时并以 error 事件返回更友好的文案。
+     */
+    getWatchdogMs?: () => number
+  } = {},
 ) {
   let state: OptimizerState = INITIAL
   const listeners = new Set<() => void>()
@@ -132,6 +146,8 @@ export function createOptimizerController(
   // 流式实况的合帧缓冲:delta 碎(实测 2 字符一帧),每帧都 set 会让面板
   // 整树重渲染数千次。攒 50ms 刷一次,人眼无感、滚动不卡。
   let liveRaw = ''
+  // R14:OPTIMIZED 标记确认后缓冲被压缩,分析段在此定格(压缩后解析不出 analysis)。
+  let frozenAnalysis = ''
   let liveTimer: ReturnType<typeof setTimeout> | null = null
 
   const clearLiveTimer = () => {
@@ -148,8 +164,20 @@ export function createOptimizerController(
 
   async function optimize(text: string, sessionId: SessionId) {
     // 斜杠命令只优化正文;前缀记入 last,「替换输入框」时拼回(ResultDock 负责)。
-    const { prefix, body: draft } = splitCommandPrefix(text)
+    const split = splitCommandPrefix(text)
+    const { prefix, body: draft } = split
     if (!draft || state.status === 'loading') return
+    // O11:只有命令没有正文——把命令词拿去优化只会得到垃圾输出,直接提示不发请求。
+    if (split.commandOnly) {
+      set({
+        open: true,
+        status: 'error',
+        error: '检测到斜杠命令但没有正文:请先输入要优化的内容。',
+        live: null,
+        last: { text: draft, sessionId },
+      })
+      return
+    }
     // 轻量记忆链:同一会话已有优化结果、且本轮草稿较上轮发生了变化(用户在我们
     // 的产物上继续编辑)时,把上轮结果作为延续参考传给模型;发送即关闭面板会清掉
     // result,记忆链自然归零。同文重试(retry)不带——那是重新生成,不是迭代。
@@ -167,8 +195,28 @@ export function createOptimizerController(
     abort?.abort()
     clearLiveTimer()
     liveRaw = ''
+    frozenAnalysis = ''
     const controller = new AbortController()
     abort = controller
+    // R21 客户端超时看门狗:Host 进程挂死或网络黑洞时,SSE 可能永远不返回首字节,
+    // 客户端不能无限转圈。超时触发 abort 并落 error;用户主动取消走 cancel()/close()。
+    const watchdogMs = Math.max(1_000, opts.getWatchdogMs?.() ?? 125_000)
+    let clientTimedOut = false
+    const watchdog = setTimeout(() => {
+      clientTimedOut = true
+      controller.abort()
+    }, watchdogMs)
+    // 看门狗触发的超时落明确错误(fetch 抛异常与读流静默结束两条路都要覆盖);
+    // 用户主动取消/关闭的状态由 cancel()/close() 负责。
+    const failTimeout = () => {
+      clearLiveTimer()
+      const seconds = Math.round(watchdogMs / 1000)
+      set({
+        status: 'error',
+        live: null,
+        error: `请求超时(客户端 ${seconds} 秒无响应,Host 可能未运行)。可在 设置 → 插件配置 → 提示词优化 中调高「超时时间」。`,
+      })
+    }
     // 从点击起计时(含会话查询与首 token 前的等待),done 时记入 result 展示。
     const startedAt = Date.now()
     set({ open: true, status: 'loading', error: null, live: { analysis: '', optimized: '' }, last: { text: draft, sessionId, prefix }, applied: null })
@@ -247,7 +295,15 @@ export function createOptimizerController(
                 liveTimer = null
                 // 仅在仍是当前请求的 loading 期间落帧(竞态:retry/close 后旧定时器不得复活)。
                 if (state.status === 'loading' && abort === controller) {
-                  set({ live: parsePartialOptimizerOutput(liveRaw) })
+                  // R14:OPTIMIZED 标记确认后压缩缓冲,分析段定格(只发生一次),
+                  // 长输出下缓冲与每帧扫描都收敛到尾部窗口。
+                  const comp = compactPartialBuffer(liveRaw)
+                  if (comp.compacted !== null) {
+                    frozenAnalysis = comp.analysis
+                    liveRaw = comp.compacted
+                  }
+                  const partial = parsePartialOptimizerOutput(liveRaw)
+                  set({ live: { analysis: partial.analysis || frozenAnalysis, optimized: partial.optimized } })
                 }
               }, 50)
             }
@@ -265,6 +321,7 @@ export function createOptimizerController(
                 provider: String(event.provider ?? ''),
                 model: String(event.model ?? ''),
                 fallbackUsed: event.fallbackUsed === true,
+                fallbackReason: typeof event.fallbackReason === 'string' && event.fallbackReason ? event.fallbackReason : undefined,
                 durationMs: Date.now() - startedAt,
               },
             })
@@ -275,13 +332,22 @@ export function createOptimizerController(
           }
         }
       }
-      if (!terminal && !controller.signal.aborted) {
-        clearLiveTimer()
-        set({ status: 'error', live: null, error: '连接中断:响应流提前结束' })
+      if (!terminal) {
+        if (!controller.signal.aborted) {
+          clearLiveTimer()
+          set({ status: 'error', live: null, error: '连接中断:响应流提前结束' })
+        } else if (clientTimedOut && abort === controller) {
+          failTimeout()
+        }
       }
     } catch (cause) {
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted) {
+        if (clientTimedOut && abort === controller) failTimeout()
+        return
+      }
       set({ status: 'error', live: null, error: cause instanceof Error ? cause.message : String(cause) })
+    } finally {
+      clearTimeout(watchdog)
     }
   }
 
@@ -306,6 +372,18 @@ export function createOptimizerController(
       abort = null
       clearLiveTimer()
       set({ ...INITIAL })
+    },
+    /**
+     * O2:loading 中取消(Esc)。与 close 不同:中止请求但不清空状态,
+     * 面板定格展示已生成的部分——用户等了几十秒的内容不应一键蒸发。
+     * 后续可「重新优化」续跑或「关闭」彻底收起。
+     */
+    cancel() {
+      if (state.status !== 'loading') return
+      abort?.abort()
+      abort = null
+      clearLiveTimer()
+      set({ status: 'cancelled' })
     },
   }
 }

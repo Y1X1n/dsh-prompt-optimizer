@@ -318,15 +318,29 @@ const DONE = {
   console.log('✓ c12 关闭上下文跳过查询')
 }
 
-// c13. 斜杠命令前缀拆分:只优化正文,前缀记入 last;路径与普通文本不拆
+// c13. 斜杠命令前缀拆分:只优化正文,前缀记入 last;路径与普通文本不拆;
+//      O11:只有命令没有正文时直接落提示态、不发请求
 {
   assert.deepEqual(splitCommandPrefix('/goal 帮我写个目标'), { prefix: '/goal', body: '帮我写个目标' })
-  assert.deepEqual(splitCommandPrefix('/goal'), { body: '/goal' }, '只敲命令没有正文时不拆')
+  assert.deepEqual(splitCommandPrefix('/goal'), { body: '/goal', commandOnly: true }, '只敲命令没有正文时标记 commandOnly')
   assert.deepEqual(splitCommandPrefix('/path/to/file 帮我看看'), { body: '/path/to/file 帮我看看' }, '路径不是命令')
   assert.deepEqual(splitCommandPrefix('  普通草稿  '), { body: '普通草稿' })
 
   const { ctx } = makeCtx()
   const c = createOptimizerController(ctx)
+
+  // O11:commandOnly → 提示态且零网络请求
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('/goal', 's1')
+      assert.equal(c.getSnapshot().status, 'error')
+      assert.match(c.getSnapshot().error, /正文/)
+      assert.equal(calls.length, 0, '只有命令没有正文不应发出网络请求')
+    },
+  )
+
+  // 正常路径:只发正文,last 记住前缀供替换时拼回
   await withFetch(
     () => sseResponse([DONE]),
     async (calls) => {
@@ -433,6 +447,84 @@ const DONE = {
   assert.ok(turns.length <= 8, '总量不超 8 条')
   assert.ok(turns[0].text === '第一个需求' && turns.at(-1).text === '步骤八', '保持原始时间顺序')
   console.log('✓ c17 上下文取样用户消息保底')
+}
+
+// c18. O2 取消:loading 中 cancel() 中止请求但保留已生成部分,面板定格
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  let sc
+  await withFetch(
+    (_body, signal) =>
+      new Response(
+        new ReadableStream({
+          start(ctrl) {
+            sc = ctrl
+            signal.addEventListener('abort', () => ctrl.close())
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      ),
+    async () => {
+      const pending = c.optimize('草稿', 's1')
+      await sleep(0)
+      sc.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'delta', text: '<<<OPTIMIZED>>>\n第一段' })}\n\n`))
+      await sleep(80) // 等合帧落一次
+      c.cancel()
+      await pending
+      const s = c.getSnapshot()
+      assert.equal(s.status, 'cancelled', '取消后应进入 cancelled 态(而非 idle/error)')
+      assert.equal(s.open, true, '面板保持打开,展示已生成部分')
+      assert.equal(s.live?.optimized, '第一段', '已生成的流式内容应保留')
+      // 取消后可关闭复位
+      c.close()
+      assert.equal(c.getSnapshot().status, 'idle')
+      assert.equal(c.getSnapshot().live, null)
+    },
+  )
+  console.log('✓ c18 cancel 保留已生成部分')
+}
+
+// c19. done/error 后再按 Esc 是 close;cancel 仅在 loading 生效
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async () => {
+      await c.optimize('草稿', 's1')
+      assert.equal(c.getSnapshot().status, 'done')
+      c.cancel() // 非 loading 态,cancel 应为 no-op
+      assert.equal(c.getSnapshot().status, 'done', '非 loading 时 cancel 不改变状态')
+    },
+  )
+  console.log('✓ c19 cancel 仅在 loading 生效')
+}
+
+// c20. R21 客户端看门狗:Host 挂死(流永不结束也不响应事件)时超时落 error
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx, { getWatchdogMs: () => 1_200 })
+  await withFetch(
+    (_body, signal) =>
+      new Response(
+        new ReadableStream({
+          start(ctrl) {
+            signal.addEventListener('abort', () => ctrl.close())
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      ),
+    async () => {
+      const pending = c.optimize('草稿', 's1')
+      await pending
+      const s = c.getSnapshot()
+      assert.equal(s.status, 'error', '看门狗应把挂死请求落为 error')
+      assert.match(s.error, /请求超时/)
+      assert.equal(s.live, null)
+    },
+  )
+  console.log('✓ c20 客户端超时看门狗')
 }
 
 console.log('\ncontroller: all passed')

@@ -55,6 +55,26 @@ const ROUTE_PATH = '/dsh-prompt-optimizer/optimize'
 const TEST_ROUTE_PATH = '/dsh-prompt-optimizer/test-model'
 const MAX_BODY_BYTES = 256 * 1024
 
+// R27:宽 string schema 的配套告警(枚举值在用处处静默归一化,这里至少让用户
+// 在日志里看到自己手填的值不被支持)。每个 非法字段=值 组合只提醒一次。
+const warnedConfigValues = new Set<string>()
+function warnUnknownEnum(value: string, allowed: readonly string[], label: string): void {
+  const key = `${label}=${value}`
+  if (!allowed.includes(value) && !warnedConfigValues.has(key)) {
+    warnedConfigValues.add(key)
+    console.warn(`[${name}] 配置 ${label}="${value}" 不是有效值(支持:${allowed.join('/')}),已按默认处理`)
+  }
+}
+
+/** 对三个宽松枚举字段做非法值告警;归一化仍由各使用处完成。 */
+function warnUnknownEnumConfig(cfg: Config): void {
+  if (cfg.language !== 'zh' && cfg.language !== 'en') warnUnknownEnum(cfg.language, ['zh', 'en'], 'language')
+  if (cfg.mode !== 'full' && cfg.mode !== 'fast') warnUnknownEnum(cfg.mode, ['full', 'fast'], 'mode')
+  if (cfg.reasoningEffort !== 'lowest' && cfg.reasoningEffort !== 'session') {
+    warnUnknownEnum(cfg.reasoningEffort, ['lowest', 'session'], 'reasoningEffort')
+  }
+}
+
 interface OptimizeRequestBody {
   text?: unknown
   provider?: unknown
@@ -255,6 +275,8 @@ export function apply(ctx: Context, config: Config) {
     },
     onChange: () => {},
   })
+  // 启动即对初始配置做一次非法枚举告警;请求期配置可能被实时改写,handler 内还会复查。
+  warnUnknownEnumConfig(config)
 
   let mounted = false
   const mount = (server: WebRouteService | undefined) => {
@@ -303,7 +325,9 @@ export function apply(ctx: Context, config: Config) {
         }
 
         const cfg = current()
-        // 宽松 schema 的配套归一化:未知枚举值一律回落默认,保证旧版设置文档可用。
+        // 宽松 schema 的配套归一化:未知枚举值一律回落默认,保证旧版设置文档可用
+        //(非法值会先告警一次,见 warnUnknownEnumConfig)。
+        warnUnknownEnumConfig(cfg)
         const language: OutputLanguage = cfg.language === 'en' ? 'en' : 'zh'
         const mode: OptimizerMode = cfg.mode === 'fast' ? 'fast' : 'full'
         const route = await resolveRoute(ctx.llm, cfg.model, asOptionalString(body.provider), asOptionalString(body.model))
@@ -376,6 +400,8 @@ export function apply(ctx: Context, config: Config) {
           let used = routes[0]
           let raw: { text: string; truncated: boolean } | null = null
           let lastError: unknown = null
+          // O12:主路由零产出失败而启用回退时,把失败原因带给客户端(徽章 tooltip 展示)。
+          let fallbackReason: string | undefined
           for (const attempt of routes) {
             used = attempt
             try {
@@ -405,6 +431,7 @@ export function apply(ctx: Context, config: Config) {
               lastError = error
               if (timedOut || abort.signal.aborted || sentAny) break
               if (attempt !== routes[routes.length - 1]) {
+                fallbackReason = error instanceof Error ? error.message : String(error)
                 console.error(`[${name}] 主路由 ${attempt.provider}/${attempt.model} 失败,尝试回退路由:`, error)
               }
             }
@@ -418,6 +445,7 @@ export function apply(ctx: Context, config: Config) {
               provider: used.provider,
               model: used.model,
               fallbackUsed: used !== routes[0],
+              ...(fallbackReason ? { fallbackReason } : {}),
             })
           } else if (timedOut) {
             send({
