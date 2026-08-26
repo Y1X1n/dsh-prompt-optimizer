@@ -18,23 +18,18 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 - **Dual optimization strategies**: with no conversation context (fresh session, or context disabled) it rewrites with a **structured template** (role / task / constraints / output format); with context it switches to **distill-intent + polish** — reads the recent conversation, keeps the draft's original framing instead of forcing a template, never re-asks what the context already answers, and never resurfaces **directions you already rejected** (the do-not-enter set).
 - **Fidelity discipline** (inspired by Fishsb/dsh-prompt-enhancer): semantic-equivalence floor, traceability (inferences are marked "unless otherwise specified / by default"), a pre-output element-by-element **fidelity self-check** against drift, an 800-character length discipline for simple tasks, and few-shot examples to stabilize output style.
 - **Lightweight memory chain**: edit our optimized text and click Optimize again, and the previous round's result rides along as a continuity reference (accepted decisions carry over, only your changes are worked on). Same-text retries, cross-session calls, and degraded (non-wellFormed) results never ride; the chain resets the moment you send or close the panel, and it follows the "include context" switch.
-- **Slash-command safe**: input like `/goal help me …` optimizes only the body; the command prefix is re-attached on replace — the command word is never rewritten.
+- **Slash-command safe**: input like `/goal help me …` optimizes only the body; the command prefix is re-attached on replace — the command word is never rewritten. A bare command with no body (just `/goal`) is rejected up front with a notice instead of being "optimized" into garbage.
 - **Context aware**: by default carries the session's recent conversation as reference (**user messages are guaranteed a floor** — agentic sessions produce far more assistant step fragments than user input, and naive recency sampling would crowd out what you actually asked), capped at 8 turns / 1600 chars; the meta-prompt explicitly forbids answering or continuing the context. Empty sessions fall back to the template strategy. Can be disabled in the settings card.
-- Result panel: **five-dimension diagnosis** (goal clarity / context / constraints / structure / output spec) + the **full optimized prompt**; actions: **replace the input box** (with **undo**, which auto-invalidates once you edit the replaced text) / copy / re-optimize / close (Esc to cancel). **The panel closes itself after you send the message or clear the input.**
+- Result panel: **five-dimension diagnosis** (goal clarity / context / constraints / structure / output spec) + the **full optimized prompt**; actions: **replace the input box** (with **undo**, which auto-invalidates once you edit the replaced text) / copy / re-optimize / close. **The panel closes itself after you send the message or clear the input.**
+- **Cancel keeps the content**: press Esc while optimizing and the panel freezes in a cancelled state showing everything generated so far — review it, hit "re-optimize" to continue, or close. In any other state Esc just closes the panel. A client-side **timeout watchdog** (settings timeout + 5s margin) turns a hung Host or black-holed network into an explicit timeout error instead of an endless spinner.
 - Panels are session-scoped: switching sessions never leaks an old result into another session's view or input box.
 - All panel styling uses official Harness design tokens (`--dsw-alias-*`); follows light/dark theme automatically.
 - Long-draft friendly: the output cap rises with estimated input length by default (full mode ×2 / fast mode ×1.5, capped at 32768); on real truncation the partial result is still shown with a clear notice instead of disappearing.
 - Format tolerance: marker variants (e.g. `<<< ANALYSIS >>>`) parse correctly; outright non-compliant output degrades gracefully with a warning.
-- Settings → Plugins → "Prompt Optimizer" card (collapsed by default, click the header to expand):
-  - Optimization model: **follow the current session** (default), or pin one from the model catalog (provider/model dropdown, manual refresh)
-  - Fallback model: automatic failover when the primary route fails before producing anything; the panel badge shows "· fallback"
-  - Connectivity: a "Test connection" button (32-token / 20s capped probe, shows the actual route and latency)
-  - Output language (中文 / English)
-  - Mode: full (analysis + rewrite) / **fast** (rewrite only, roughly half the output tokens)
-  - Reasoning effort: clamp to the lowest tier (default — dramatically shortens the pre-first-token stall on reasoning models) / follow session
-  - Max output tokens (default 8192), timeout (default 120s), temperature (default 0.2)
-  - Auto output-cap toggle (default on)
-  - Include-context toggle (default on): when off, only the draft itself is read — no session history
+- Settings → Plugins → "Prompt Optimizer" card (collapsed by default, click the header to expand; the collapsed header shows a "model · mode" summary; every change can be reverted in one step via "Undo last change" at the bottom — an in-memory stack of the last 20):
+  - **Model**: optimization model (**follow the current session** (default), or pin one from the model catalog, provider/model dropdown with manual refresh) / fallback model (automatic failover when the primary route fails before producing anything — the panel badge shows "· fallback", hover to see why) / connectivity ("Test connection", 32-token / 20s capped probe showing the actual route and latency)
+  - **Generation parameters**: output language (中文 / English); mode: full (analysis + rewrite) / **fast** (rewrite only, roughly half the output tokens); reasoning effort: clamp to lowest tier (default — dramatically shortens the pre-first-token stall on reasoning models) / follow session; max output tokens (default 8192), timeout (default 120s), temperature (default 0.2, hover for the rationale); auto output-cap toggle (default on)
+  - **Context**: include-context toggle (default on): when off, only the draft itself is read — no session history
 
 ## Installation
 
@@ -78,7 +73,8 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## Compatibility
 
-- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); also verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call).
+- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), and re-verified on **0.1.1-rc.2** (2026-08-27, Windows: `--dump-config` composition layer, route registration, client bundle all healthy).
+- Protocol contract: `/dsh-prompt-optimizer/optimize` returns 400/405/409/413 as plain JSON on pre-check failure and switches to an SSE stream on success (model errors arrive as `error` events); `/dsh-prompt-optimizer/test-model` **always returns HTTP 200** with an `ok` field in the body (a probe is application-level semantics, deliberately not mapped to transport status codes) — integrate against `ok`, not the status code.
 - The HTTP carrier service name has drifted between releases (`httpServer` in the npm 0.0.1-rc.x type packages, `webServer` in the 0.1.0-rc.x runtime): the plugin waits on both names via `ctx.inject` with no static hard dependency — if the name changes again, only this plugin's routes fail to register (with a log warning after 10s); the Harness startup is never dragged down.
 - Client and Host must be the same version (the SSE protocol is a private contract): after upgrading, restart `dsh web` and refresh the browser.
 
@@ -93,16 +89,16 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## Verification status
 
-Verified in a real environment (dsh 0.1.0-rc.8, Windows):
+Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, Windows — see Compatibility):
 
 - Composition-layer load: `--dump-config` shows the `# == dsh-prompt-optimizer` layer;
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
 - Client: the bundle is picked up by client-modules, appears in `window.__DSH_BOOT__`, and `/plugins/dsh-prompt-optimizer/client.js` is reachable;
 - End to end: a real `ctx.llm` call (DeepSeek route) completes "analysis + rewrite" with correct marker parsing (`wellFormed: true`).
-- Automated tests (`npm test`, 56 cases):
-  - `test/smoke.mjs`: 27 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation);
-  - `test/prompt.test.mjs`: 12 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
-  - `test/controller.test.mjs`: 17 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, history extraction filtering and degradation, slash-prefix splitting, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
+- Automated tests (`npm test`, 60 cases):
+  - `test/smoke.mjs`: 27 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation);
+  - `test/prompt.test.mjs`: 13 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, stream-buffer compaction, token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
+  - `test/controller.test.mjs`: 20 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
 
 ## How it works
 
@@ -117,8 +113,9 @@ Click "Optimize"
      tokens by default; optional reasoning clamp / low temperature)
   → text-delta chunks are pushed over SSE and the panel shows "analysis / rewrite" sections live
     (incrementally parsed on <<<ANALYSIS>>> / <<<OPTIMIZED>>> markers, whitespace variants tolerated)
-  → the done event carries the final parsed result; a max-tokens finish carries a truncated flag
-  → one click replaces the input box (undoable) / copy / re-optimize
+  → the done event carries the final parsed result; a max-tokens finish carries a truncated flag; a fallback adds its reason
+  → one click replaces the input box (undoable, slash prefix re-attached) / copy / re-optimize (edits continue from the previous result; same text regenerates fresh)
+  → Esc while optimizing = cancel (a cancelled state keeps what was generated); a client-side watchdog guards against an unresponsive Host
 ```
 
 ## Development
