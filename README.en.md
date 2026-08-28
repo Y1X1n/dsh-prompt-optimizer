@@ -23,6 +23,7 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 - Result panel: **five-dimension diagnosis** (goal clarity / context / constraints / structure / output spec) + the **full optimized prompt**; actions: **replace the input box** (with **undo**, which auto-invalidates once you edit the replaced text) / copy / re-optimize / close. **The panel closes itself after you send the message or clear the input.**
 - **Cancel keeps the content**: press Esc while optimizing and the panel freezes in a cancelled state showing everything generated so far — review it, hit "re-optimize" to continue, or close. In any other state Esc just closes the panel. A client-side **timeout watchdog** (settings timeout + 5s margin) turns a hung Host or black-holed network into an explicit timeout error instead of an endless spinner.
 - Panels are session-scoped: switching sessions never leaks an old result into another session's view or input box.
+- **Auto-follow scrolling while streaming**: the live view sticks to the bottom as content grows, pauses when you scroll up, and resumes when you return near the bottom.
 - All panel styling uses official Harness design tokens (`--dsw-alias-*`); follows light/dark theme automatically.
 - Long-draft friendly: the output cap rises with estimated input length by default (full mode ×2 / fast mode ×1.5, capped at 32768); on real truncation the partial result is still shown with a clear notice instead of disappearing.
 - Format tolerance: marker variants (e.g. `<<< ANALYSIS >>>`) parse correctly; outright non-compliant output degrades gracefully with a warning.
@@ -96,8 +97,8 @@ Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, 
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
 - Client: the bundle is picked up by client-modules, appears in `window.__DSH_BOOT__`, and `/plugins/dsh-prompt-optimizer/client.js` is reachable;
 - End to end: a real `ctx.llm` call (DeepSeek route) completes "analysis + rewrite" with correct marker parsing (`wellFormed: true`).
-- Automated tests (`npm test`, 60 cases):
-  - `test/smoke.mjs`: 27 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation);
+- Automated tests (`npm test`, 61 cases):
+  - `test/smoke.mjs`: 28 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation, origin fence);
   - `test/prompt.test.mjs`: 13 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, stream-buffer compaction, token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
   - `test/controller.test.mjs`: 20 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
 
@@ -163,6 +164,7 @@ dsh-prompt-optimizer/
 ## Security notes
 
 - The HTTP routes are registered on dsh's own web server, which listens on `127.0.0.1` by default. If you expose dsh to your LAN (`0.0.0.0`), this plugin's optimize endpoint becomes callable from the LAN too — it consumes your configured model quota; be aware.
+- Both routes enforce an **origin fence**: requests carrying an `Origin` header (browser POSTs always do) must match `Host`, and `Host` must be a loopback address or the machine's actual local address — cross-site forged requests (CSRF) and DNS rebinding get a 403; command-line calls without `Origin` are unaffected.
 - The plugin holds no API keys: every model call goes through the Harness-configured `ctx.llm` routes.
 
 ## License

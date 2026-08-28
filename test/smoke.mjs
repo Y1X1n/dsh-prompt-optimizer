@@ -18,14 +18,15 @@ const CANNED = [
   '<<<END>>>',
 ].join('\n')
 
-function makeReq(body, method = 'POST') {
+function makeReq(body, method = 'POST', headers) {
   const req = Readable.from(body === undefined ? [] : [JSON.stringify(body)])
   req.method = method
+  req.headers = headers ?? {}
   return req
 }
 
-/** 调用插件注册的 handler 并收集响应。raw 为字符串时按原样发送(用于畸形 JSON 用例)。 */
-async function call(handler, body, method) {
+/** 调用插件注册的 handler 并收集响应。raw 为字符串时按原样发送(用于畸形 JSON 用例);headers 供来源围栏用例透传。 */
+async function call(handler, body, method, headers) {
   const res = {
     status: 0,
     headers: {},
@@ -49,8 +50,8 @@ async function call(handler, body, method) {
   }
   const req =
     typeof body === 'string'
-      ? Object.assign(Readable.from([body]), { method: method ?? 'POST' })
-      : makeReq(body, method)
+      ? Object.assign(Readable.from([body]), { method: method ?? 'POST', headers: headers ?? {} })
+      : makeReq(body, method, headers)
   await handler(req, res)
   return res
 }
@@ -520,6 +521,35 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   const sentBig = big.getOptions().messages[0].content[0].text
   assert.ok(sentBig.length < 3000, 'previous 应被截断到 1500 字符级')
   console.log('✓ 18 记忆链进入模型消息')
+}
+
+// 19. 来源围栏:跨站 Origin 拒绝;无 Origin(CLI)与同源 Origin 放行
+{
+  const { handler } = await setup()
+  // 恶意网页跨站 text/plain POST(免预检):Origin 与 Host 不符 → 403,不触达 llm
+  const csrf = await call(handler, { text: 'x' }, 'POST', { origin: 'https://evil.example', host: '127.0.0.1:3080' })
+  assert.equal(csrf.status, 403, '跨站 Origin 必须被拒绝')
+  assert.match(csrf.body, /已拒绝跨站请求/)
+  // DNS rebinding:Origin 与 Host 一致但 Host 不是回环/本机地址 → 403
+  const rebind = await call(handler, { text: 'x' }, 'POST', {
+    origin: 'http://evil.example:3080',
+    host: 'evil.example:3080',
+  })
+  assert.equal(rebind.status, 403, '伪造 Host(rebinding)必须被拒绝')
+  // 正常调用方:CLI 不带 Origin → 放行
+  const cli = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(cli.status, 200, '无 Origin 的命令行调用应放行')
+  // 正常调用方:同源页面(Origin == Host == 回环)→ 放行
+  const same = await call(handler, { text: 'x', provider: 'p', model: 'm' }, 'POST', {
+    origin: 'http://127.0.0.1:3080',
+    host: '127.0.0.1:3080',
+  })
+  assert.equal(same.status, 200, '同源调用应放行')
+  // 探活路由同样受围栏保护
+  const { testHandler } = await setup()
+  const testCsrf = await call(testHandler, {}, 'POST', { origin: 'https://evil.example', host: '127.0.0.1:3080' })
+  assert.equal(testCsrf.status, 403, 'test-model 同样拒绝跨站请求')
+  console.log('✓ 19 来源围栏(CSRF / rebinding)')
 }
 
 console.log('\nsmoke: all passed')

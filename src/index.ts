@@ -114,6 +114,45 @@ function writeJson(res: import('node:http').ServerResponse, status: number, body
   res.end(payload)
 }
 
+/**
+ * 浏览器来源围栏(本机服务的 CSRF / DNS rebinding 防线):
+ * - 浏览器发出的 POST 必带 Origin 头:其 authority 必须与 Host 头一致,
+ *   否则拒绝——恶意网页的跨站 text/plain POST(免预检)在此被挡下;
+ * - Host 头必须是回环地址,或与本次连接的实际本地地址:端口一致——
+ *   DNS rebinding 会伪造 Host=攻击域名,在此被挡下;
+ * - 无 Origin 的请求(CLI / 服务端调用)放行:本插件的主要调用方是
+ *   同源页面与命令行,前者 Origin 恒匹配,后者本就不带该头。
+ * LAN 暴露(README 已声明)不受影响:直连 IP 访问时 Host=本机地址。
+ */
+function assertTrustedOrigin(req: IncomingMessage, res: ServerResponse): boolean {
+  const origin = req.headers.origin
+  if (!origin) return true
+  const host = req.headers.host
+  let originHost = ''
+  try {
+    originHost = new URL(origin).host
+  } catch {
+    originHost = ''
+  }
+  if (!host || originHost !== host) {
+    writeJson(res, 403, { ok: false, error: '已拒绝跨站请求(Origin 与 Host 不符)' })
+    return false
+  }
+  const hostName = host.replace(/:\d+$/, '')
+  const hostPort = /:(\d+)$/.exec(host)?.[1] ?? '80'
+  const loopback = hostName === 'localhost' || hostName === '127.0.0.1' || hostName === '[::1]' || hostName === '::1'
+  if (!loopback) {
+    // Host 不是回环时,必须恰好等于本次连接的本地地址:端口(直连 IP 的 LAN 访问);
+    // 拿不到 socket 信息或对不上都拒绝(fail-closed,防 rebinding 伪造 Host)。
+    const sock = (req as { socket?: { localAddress?: string; localPort?: number } }).socket
+    if (!(sock?.localAddress && sock?.localPort && hostName === sock.localAddress && hostPort === String(sock.localPort))) {
+      writeJson(res, 403, { ok: false, error: '请求的 Host 与本机服务地址不符(可能的 DNS rebinding),已拒绝' })
+      return false
+    }
+  }
+  return true
+}
+
 /** 请求体超过大小上限时抛出,用于映射 413(与 JSON 解析失败的 400 区分)。 */
 class PayloadTooLargeError extends Error {}
 
@@ -308,6 +347,7 @@ export function apply(ctx: Context, config: Config) {
         writeJson(res, 405, { ok: false, error: 'Method Not Allowed' })
         return
       }
+      if (!assertTrustedOrigin(req, res)) return
       // 客户端在响应结束前断开连接时,中止模型调用。
       // 注意:必须用 res 的 close;req 的 close 在请求体读完就会触发,不代表断连。
       const abort = new AbortController()
@@ -475,6 +515,7 @@ export function apply(ctx: Context, config: Config) {
       writeJson(res, 405, { ok: false, error: 'Method Not Allowed' })
       return
     }
+    if (!assertTrustedOrigin(req, res)) return
     const body = await readBodyOrReply(req, res)
     if (!body) return
     const cfg = current()

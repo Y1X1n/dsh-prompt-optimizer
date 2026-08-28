@@ -212,15 +212,33 @@ export function createResultDock(controller: OptimizerController) {
       return () => clearTimeout(timer)
     }, [undoneFlash])
 
+    // 流式实况的 stick-to-bottom(自动跟随滚动):内容增长时贴住底部,
+    // 用户向上滚动即暂停跟随,滚回底部附近(±28px)自动恢复。
+    const liveBoxRef = useRef<HTMLDivElement | null>(null)
+    const stickRef = useRef(true)
+    useEffect(() => {
+      if (state.status === 'loading') stickRef.current = true
+    }, [state.status])
+    useEffect(() => {
+      const el = liveBoxRef.current
+      if (!el || state.status !== 'loading') return
+      if (stickRef.current) el.scrollTop = el.scrollHeight
+    }, [state.live, state.status])
+    const onLiveScroll = () => {
+      const el = liveBoxRef.current
+      if (!el) return
+      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 28
+    }
+
     if (!owns) return null
     const { result } = state
     // 阶段提示:首 token 前(等待响应)→ 分析诊断 → 输出优化稿,跟随流式段落推进。
     const stage = state.live?.optimized ? t('panel.stage.writing') : state.live?.analysis ? t('panel.stage.analyzing') : t('panel.stage.waiting')
 
-    // 流式实况段(loading 与 cancelled 共用;U5 限高滚动,不遮挡阶段行)。
+    // 流式实况段(loading 与 cancelled 共用;U5 限高滚动 + 自动跟随,不遮挡阶段行)。
     const liveBody =
       state.live && (state.live.analysis || state.live.optimized) ? (
-        <div style={{ ...styles.body, maxHeight: '34vh', overflowY: 'auto', marginTop: 2 }}>
+        <div ref={liveBoxRef} onScroll={onLiveScroll} style={{ ...styles.body, maxHeight: '34vh', overflowY: 'auto', marginTop: 2 }}>
           {state.live.analysis && (
             <>
               <div style={styles.sectionTitle}>{t('panel.analysis')}</div>
