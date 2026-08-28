@@ -477,7 +477,7 @@ export function apply(ctx: Context, config: Config) {
             }
           }
           if (raw) {
-            const parsed = parseOptimizerOutput(raw.text)
+            const parsed = parseOptimizerOutput(raw.text, mode)
             send({
               type: 'done',
               ...parsed,

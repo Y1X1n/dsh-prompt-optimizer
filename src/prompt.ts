@@ -257,14 +257,17 @@ function findMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', fromIn
 /**
  * 解析模型输出中的标记段落。模型不遵守格式时降级:
  * 找到 OPTIMIZED 则其余归 analysis;两个标记都没有则全文作为 optimized。
+ * fast 模式只有单个段落,无标记时整段即结果本身(无法、也无需检测「混入
+ * 多余文字」),判 wellFormed=true——避免对不输出标记的第三方模型误报横幅、
+ * 误杀记忆链(full 模式无标记仍判 false,因为有 analysis 段可能被吞)。
  */
-export function parseOptimizerOutput(raw: string): OptimizerOutput {
+export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'): OptimizerOutput {
   const text = raw.trim()
   const a = findMarker(text, 'ANALYSIS')
   const o = findMarker(text, 'OPTIMIZED')
 
   if (!a && !o) {
-    return { analysis: '', optimized: text, wellFormed: false }
+    return { analysis: '', optimized: text, wellFormed: mode === 'fast' }
   }
 
   let analysis = ''

@@ -254,7 +254,7 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 8 超时中止并通知(慢)')
 }
 
-// 9. 快速模式:系统提示词不含分析段要求,解析仍走标记通道
+// 9. 快速模式:系统提示词不含分析段要求,解析仍走标记通道;无标记输出判 wellFormed=true
 {
   const { handler, getOptions } = await setup({ config: { mode: 'fast' } })
   const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
@@ -262,6 +262,21 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   assert.ok(!getOptions().system.includes('ANALYSIS'), 'fast 模式不应要求 ANALYSIS 段')
   assert.ok(getOptions().system.includes('OPTIMIZED'), 'fast 模式仍用 OPTIMIZED 标记')
   assert.match(data.optimized, /资深代码评审/)
+  assert.equal(data.wellFormed, true, '带标记输出在 fast 模式下 wellFormed')
+  // 无标记输出(free 模型常见):fast 模式单段落,整段即结果,不应误报格式退化
+  const markerless = await setup({
+    config: { mode: 'fast' },
+    llmOverrides: {
+      async *stream() {
+        yield { type: 'text-delta', index: 0, text: '直接输出的优化稿,没有任何标记。\n' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+  })
+  const res2 = await call(markerless.handler, { text: 'x', provider: 'p', model: 'm' })
+  const data2 = doneOf(res2)
+  assert.equal(data2.wellFormed, true, 'fast 模式无标记不应误报 wellFormed=false')
+  assert.match(data2.optimized, /直接输出的优化稿/)
   console.log('✓ 9 快速模式提示词')
 }
 

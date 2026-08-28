@@ -26,12 +26,15 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   console.log('✓ p2 空白变体标记')
 }
 
-// 3. 完全无标记:全文作为 optimized,wellFormed=false
+// 3. 完全无标记:全文作为 optimized;full 模式判 false,fast 模式判 true(单段落格式,整段即结果)
 {
   const out = parseOptimizerOutput('没有遵守格式的输出')
   assert.equal(out.wellFormed, false)
   assert.equal(out.analysis, '')
   assert.equal(out.optimized, '没有遵守格式的输出')
+  const fast = parseOptimizerOutput('没有输出标记但内容干净的优化稿', 'fast')
+  assert.equal(fast.wellFormed, true, 'fast 模式无标记不应误报格式退化')
+  assert.equal(fast.optimized, '没有输出标记但内容干净的优化稿')
   console.log('✓ p3 无标记降级')
 }
 
