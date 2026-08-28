@@ -11,6 +11,11 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 
 ![结果面板:五维诊断与优化稿流式上屏,可替换/撤回/复制;徽章显示实际路由与用时](docs/screenshots/optimize-panel.png)
 
+| | |
+|---|---|
+| ![发送栏空闲态:✨ 优化按钮位于模型选择旁,空输入时禁用](docs/screenshots/composer-idle.png) | ![面板错误态:上游模型错误完整透传,可一键重试](docs/screenshots/panel-error.png) |
+| ![设置卡折叠态:标题栏显示「模型 · 模式」关键摘要](docs/screenshots/settings-collapsed.png) | ![设置卡展开态:模型 / 调用参数 / 上下文 三组配置](docs/screenshots/settings-expanded.png) |
+
 ## 功能
 
 - 发送栏工具行右侧新增「优化」按钮(输入为空时禁用,优化中带呼吸动画);等待期间面板实时显示当前阶段(等待模型响应 / 分析诊断 / 输出优化稿)与已用秒数,完成后模型徽章处展示总用时。

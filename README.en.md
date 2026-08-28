@@ -11,6 +11,11 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 
 ![The result panel: five-dimension diagnosis and the rewrite streamed live, with replace/undo/copy; the badge shows the actual route and duration](docs/screenshots/optimize-panel.png)
 
+| | |
+|---|---|
+| ![Composer idle state: the ✨ Optimize button next to the model picker, disabled while empty](docs/screenshots/composer-idle.png) | ![Panel error state: upstream model errors surface in full, with one-click retry](docs/screenshots/panel-error.png) |
+| ![Settings card collapsed: the header shows a "model · mode" summary](docs/screenshots/settings-collapsed.png) | ![Settings card expanded: model / generation parameters / context groups](docs/screenshots/settings-expanded.png) |
+
 ## Features
 
 - An **Optimize** button on the right of the composer tool row (disabled while empty, breathing animation while working). During the wait the panel shows the live stage (waiting for model / analyzing / writing the rewrite) with an elapsed-seconds readout; on completion the model badge shows the total duration.
