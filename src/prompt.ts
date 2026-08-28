@@ -74,7 +74,7 @@ const RULES_ZH = `# 保真与明确化原则(全程遵守)
 - 语义等价是底线:已明确的对象、方向、数量、范围、禁止项、术语必须与草稿一致,不得替换、扩大、缩小或颠倒
 - 来源可回溯:任何具体化的内容都必须能从草稿或上下文已确认信息找到依据;推断处用「如无特别说明/默认」措辞保留选择权,无依据的宁可不补
 - 保真自检:输出前逐要素核对——草稿的每个原子信息都要在优化稿中找到对应,找不到即为语义漂移,必须修正
-- 长度纪律:简单任务的优化稿控制在 800 字符以内;复杂任务可超出,但不得为简短删减必要要素,也不得冗余
+- 长度纪律:简单任务的优化稿控制在 800 字符以内,复杂任务可超出;任何情况下保真自检优先于长度——要素缺失比冗长更严重,但也不得冗余
 - 语言匹配:草稿以中文为主体则输出必须为中文,以英文为主体则输出必须为英文;保留原文的术语与专有名词`
 
 const RULES_EN = `# Fidelity & clarification rules (always apply)
@@ -82,7 +82,7 @@ const RULES_EN = `# Fidelity & clarification rules (always apply)
 - Semantic equivalence is the floor: what the draft states (subject, direction, quantities, scope, prohibitions, terms) must survive intact — never replace, widen, narrow, or invert it
 - Traceability: every concretized detail must trace back to the draft or to information the context has confirmed; mark inferences with "unless otherwise specified / by default" phrasing; when in doubt, leave it out
 - Fidelity self-check: before output, verify every atomic element of the draft has a counterpart in your rewrite — a missing one is semantic drift and must be fixed
-- Length discipline: keep the rewrite under 800 characters for simple tasks; longer is allowed for complex ones, but never cut necessary elements for brevity, and never pad
+- Length discipline: keep the rewrite under 800 characters for simple tasks; longer is allowed for complex ones. Fidelity always outranks length — a missing element is worse than verbosity, but never pad
 - Language match: Chinese-dominant draft → Chinese output; English-dominant → English output; keep the draft's terms and proper nouns`
 
 const EXAMPLE_TEMPLATE_ZH = `# 示例(严格模仿其「输入 → 输出」的风格)
