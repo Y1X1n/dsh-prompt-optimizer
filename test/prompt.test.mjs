@@ -38,12 +38,16 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   console.log('✓ p3 无标记降级')
 }
 
-// 4. 只有 OPTIMIZED:analysis 为空,optimized 取到结尾(END 缺失容错)
+// 4. 只有 OPTIMIZED:analysis 为空,optimized 取到结尾(END 缺失容错);
+//    fast 模式下这正是其正确格式(只要求 OPTIMIZED),判 wellFormed=true;full 模式判 false
 {
-  const out = parseOptimizerOutput('<<<OPTIMIZED>>>\n只有优化结果,没有 END')
+  const raw = '<<<OPTIMIZED>>>\n只有优化结果,没有 END'
+  const out = parseOptimizerOutput(raw)
   assert.equal(out.wellFormed, false)
   assert.equal(out.analysis, '')
   assert.equal(out.optimized, '只有优化结果,没有 END')
+  const fast = parseOptimizerOutput(raw, 'fast')
+  assert.equal(fast.wellFormed, true, 'fast 模式仅 OPTIMIZED 标记 = 完全遵守格式')
   console.log('✓ p4 缺 END 容错')
 }
 

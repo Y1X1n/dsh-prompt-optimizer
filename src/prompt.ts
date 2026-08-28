@@ -257,17 +257,18 @@ function findMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', fromIn
 /**
  * 解析模型输出中的标记段落。模型不遵守格式时降级:
  * 找到 OPTIMIZED 则其余归 analysis;两个标记都没有则全文作为 optimized。
- * fast 模式只有单个段落,无标记时整段即结果本身(无法、也无需检测「混入
- * 多余文字」),判 wellFormed=true——避免对不输出标记的第三方模型误报横幅、
- * 误杀记忆链(full 模式无标记仍判 false,因为有 analysis 段可能被吞)。
+ * fast 模式判 wellFormed 恒为 true:它只要求 OPTIMIZED 单标记(现有判定却要求
+ * 双标记,连完全遵守 fast 格式的输出都会误报),而「无标记 = 整段即结果」时
+ * 「混入多余文字」既无法检测也无需警告——警示横幅与记忆链门槛在 fast 下全是噪声。
  */
 export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'): OptimizerOutput {
   const text = raw.trim()
   const a = findMarker(text, 'ANALYSIS')
   const o = findMarker(text, 'OPTIMIZED')
+  const wellFormed = mode === 'fast' ? true : Boolean(a && o)
 
   if (!a && !o) {
-    return { analysis: '', optimized: text, wellFormed: mode === 'fast' }
+    return { analysis: '', optimized: text, wellFormed }
   }
 
   let analysis = ''
@@ -283,7 +284,7 @@ export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'):
   return {
     analysis,
     optimized: optimized || text,
-    wellFormed: Boolean(a && o),
+    wellFormed,
   }
 }
 
