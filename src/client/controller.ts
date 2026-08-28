@@ -132,6 +132,8 @@ export function createOptimizerController(
   opts: {
     isModelPinned?: () => boolean
     isContextEnabled?: () => boolean
+    /** 快速模式(与 Host 归一化口径一致:仅 mode==='fast' 为真)。决定无标记流是否可直接预览。 */
+    isFastMode?: () => boolean
     /**
      * R21 客户端超时看门狗的总时长(毫秒)。由入口按设置里的 timeoutSeconds 计算
      * (设置秒数 × 1000 + 5s 余量);缺省 125s。看门狗兜底 Host 挂死/网络黑洞——
@@ -303,7 +305,14 @@ export function createOptimizerController(
                     liveRaw = comp.compacted
                   }
                   const partial = parsePartialOptimizerOutput(liveRaw)
-                  set({ live: { analysis: partial.analysis || frozenAnalysis, optimized: partial.optimized } })
+                  const live = { analysis: partial.analysis || frozenAnalysis, optimized: partial.optimized }
+                  // 快速模式 + 模型不输出标记:解析不出任何段落时,原始流即优化稿本身,
+                  // 直接实时预览(整段空等到 done 比看到逐字增长糟得多)。缓冲里出现
+                  // 「<<<」视为标记正在形成,交回正常解析,避免把半个标记闪进预览。
+                  if (opts.isFastMode?.() && !live.analysis && !live.optimized && liveRaw.trim() && !liveRaw.includes('<<<')) {
+                    live.optimized = liveRaw.trim()
+                  }
+                  set({ live })
                 }
               }, 50)
             }

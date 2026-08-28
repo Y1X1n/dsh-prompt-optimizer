@@ -102,10 +102,10 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
 - Client:bundle 被 client-modules 扫描收录并出现在 `window.__DSH_BOOT__`,`/plugins/dsh-prompt-optimizer/client.js` 可访问;
 - 端到端:真实调用 `ctx.llm`(DeepSeek 路由)完成「分析 + 优化」,标记解析正确(`wellFormed: true`)。
-- 自动化测试(`npm test`,共 61 例):
+- 自动化测试(`npm test`,共 62 例):
   - `test/smoke.mjs`:28 项 Host 冒烟用例(真实 cordis Context + mock 服务,覆盖路由解析优先级、空字符串/畸形配置、400/405/409/413、SSE 事件流、max-tokens 截断、超时、快速模式、推理钳档、旧版设置文档归一化、连接测试、回退链与回退原因透传、tool-calls 防御、输出上限自适应、上下文注入与硬开关、策略选择、记忆链注入与截断、来源围栏);
   - `test/prompt.test.mjs`:13 项元提示词解析用例(标记空白变体、降级路径、流式实况解析、流式缓冲压缩、token 估算、上下文载荷与预算收敛、策略分叉、保真纪律与示例、记忆链载荷);
-  - `test/controller.test.mjs`:20 项客户端纯逻辑用例(SSE 帧解析、合帧节流、连接中断、跳过会话查询、撤回流转、retry、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底)。
+  - `test/controller.test.mjs`:21 项客户端纯逻辑用例(SSE 帧解析、合帧节流、连接中断、跳过会话查询、撤回流转、retry、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底)。
 
 ## 工作原理
 

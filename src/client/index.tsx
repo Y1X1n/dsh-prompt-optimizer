@@ -55,6 +55,8 @@ export function apply(ctx: ClientContext): void {
     isModelPinned: () => Boolean(scope.getSnapshot().value?.model?.trim()),
     // 与 Host 侧「includeContext 缺省视为开」的口径一致(R28)。
     isContextEnabled: () => scope.getSnapshot().value?.includeContext ?? true,
+    // 与 Host 侧「仅 mode==='fast' 为快速」的归一化口径一致。
+    isFastMode: () => scope.getSnapshot().value?.mode === 'fast',
     // R21:看门狗 = 设置超时秒数 + 5s 余量(正常时 Host 的超时错误先到达,文案更友好)。
     getWatchdogMs: () => ((scope.getSnapshot().value?.timeoutSeconds ?? 120) + 5) * 1000,
   })

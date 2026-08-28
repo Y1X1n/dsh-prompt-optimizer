@@ -102,10 +102,10 @@ Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, 
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
 - Client: the bundle is picked up by client-modules, appears in `window.__DSH_BOOT__`, and `/plugins/dsh-prompt-optimizer/client.js` is reachable;
 - End to end: a real `ctx.llm` call (DeepSeek route) completes "analysis + rewrite" with correct marker parsing (`wellFormed: true`).
-- Automated tests (`npm test`, 61 cases):
+- Automated tests (`npm test`, 62 cases):
   - `test/smoke.mjs`: 28 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode, reasoning clamp, legacy-settings normalization, connectivity test, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation, origin fence);
   - `test/prompt.test.mjs`: 13 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, stream-buffer compaction, token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
-  - `test/controller.test.mjs`: 20 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
+  - `test/controller.test.mjs`: 21 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling).
 
 ## How it works
 

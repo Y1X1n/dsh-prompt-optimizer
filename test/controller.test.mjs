@@ -527,4 +527,36 @@ const DONE = {
   console.log('✓ c20 客户端超时看门狗')
 }
 
+// c21. 快速模式无标记模型:原始流实时预览;缓冲出现「<<<」时不兜底(防半个标记闪现)
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx, { isFastMode: () => true })
+  let sc
+  const stream = new ReadableStream({ start(ctrl) { sc = ctrl } })
+  await withFetch(
+    () => new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+    async () => {
+      const pending = c.optimize('草稿', 's1')
+      await sleep(0)
+      // 无标记 delta:应直接作为优化稿实时预览
+      sc.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'delta', text: '第一段优化内容' })}\n\n`))
+      await sleep(80)
+      assert.equal(c.getSnapshot().live?.optimized, '第一段优化内容', '无标记流应实时预览')
+      // 出现半个标记:兜底让位,不把「<<<OPT」闪进预览
+      sc.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'delta', text: ',<<<OPT' })}\n\n`))
+      await sleep(80)
+      assert.equal(c.getSnapshot().live?.optimized ?? '', '', '标记形成中不得兜底预览')
+      // 标记完成:恢复正常解析
+      sc.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'delta', text: 'IMIZED>>>\n正式内容' })}\n\n`))
+      await sleep(80)
+      assert.equal(c.getSnapshot().live?.optimized, '正式内容', '标记完成后回到正常解析')
+      sc.enqueue(enc.encode(`data: ${JSON.stringify(DONE)}\n\n`))
+      sc.close()
+      await pending
+      assert.equal(c.getSnapshot().status, 'done')
+    },
+  )
+  console.log('✓ c21 快速模式无标记实时预览')
+}
+
 console.log('\ncontroller: all passed')
