@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  /* 与 pptxgenjs 严格对齐:1in = 128px(10in=1280, 5.625in=720);pt→px = pt*128/72 */
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #444; font-family: "Microsoft YaHei", sans-serif; }
+  .slide { position: relative; width: 1280px; height: 720px; background: #17181C; overflow: hidden; margin: 10px auto; }
+  .abs { position: absolute; }
+  .rr { border-radius: 12px; }
+  .card { background: #22242B; border: 1px solid #31343D; border-radius: 12px; }
+  .pill { border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+  .oval { border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+  img.shot { position: absolute; border: 1px solid #31343D; }
+  .code { font-family: Consolas, monospace; }
+</style>
+</head>
+<body>
+<!-- 数据来自 build-promo-pptx.cjs 的同一份坐标;逐元素镜像 -->
+<div class="slide" id="s1">
+  <div class="abs" style="left:1030px;top:186px;width:179px;height:179px;font-size:142px;color:#4D6BFE;text-align:center;">✨</div>
+  <div class="abs" style="left:70px;top:224px;width:920px;font-size:78px;font-weight:700;color:#F2F3F5;line-height:1.1;">一键把随手写的话<br>变成专业提示词</div>
+  <div class="abs pill" style="left:74px;top:463px;width:333px;height:41px;background:#4D6BFE;font-size:19px;">DeepSeek Harness 插件</div>
+  <div class="abs" style="left:70px;top:527px;width:1101px;font-size:27px;color:#9AA0AA;">在输入框旁点亮一个 ✨ 按钮:诊断你写的内容,重写成模型真正听得懂的话——全程流式、可撤回、不出本地。</div>
+  <div class="abs" style="left:70px;top:643px;width:1139px;font-size:21px;color:#8FA3FF;">开源 · 本地 · 免费&nbsp;&nbsp;&nbsp;&nbsp;v0.3.12&nbsp;&nbsp;&nbsp;&nbsp;62 项自动化测试</div>
+</div>
+
+<div class="slide" id="s2">
+  <div class="abs pill" style="left:70px;top:54px;width:207px;height:44px;background:#4D6BFE;font-size:21px;">痛点</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">每个 AI 用户的日常</div>
+  <!-- 三张痛点卡 -->
+  <div class="abs card" style="left:70px;top:224px;width:557px;height:125px;"></div>
+  <div class="abs" style="left:70px;top:224px;width:9px;height:125px;background:#E5534B;"></div>
+  <div class="abs" style="left:100px;top:237px;width:512px;font-size:26px;font-weight:700;color:#F2F3F5;">随手一句话,模型接不住</div>
+  <div class="abs" style="left:100px;top:285px;width:512px;font-size:20px;color:#9AA0AA;">「帮我写个请假条」→ 模型反问三连:什么事?请几天?给谁看?</div>
+  <div class="abs card" style="left:70px;top:368px;width:557px;height:125px;"></div>
+  <div class="abs" style="left:70px;top:368px;width:9px;height:125px;background:#E5534B;"></div>
+  <div class="abs" style="left:100px;top:381px;width:512px;font-size:26px;font-weight:700;color:#F2F3F5;">来回解释,越聊越累</div>
+  <div class="abs" style="left:100px;top:429px;width:512px;font-size:20px;color:#9AA0AA;">补一句改一版,十轮对话过去,token 烧了一堆,还偏题。</div>
+  <div class="abs card" style="left:70px;top:511px;width:557px;height:125px;"></div>
+  <div class="abs" style="left:70px;top:511px;width:9px;height:125px;background:#E5534B;"></div>
+  <div class="abs" style="left:100px;top:524px;width:512px;font-size:26px;font-weight:700;color:#F2F3F5;">好结果无法沉淀</div>
+  <div class="abs" style="left:100px;top:572px;width:512px;font-size:20px;color:#9AA0AA;">某次措辞特别好,下回又从零开始,经验全在聊天记录里吃灰。</div>
+  <img class="shot" src="../screenshots/composer-idle.png" style="left:672px;top:224px;width:538px;height:336px;">
+  <div class="abs" style="left:672px;top:568px;width:538px;font-size:18px;color:#9AA0AA;text-align:center;">发送栏右侧的 ✨ 优化按钮(空输入时自动禁用)</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s3">
+  <div class="abs pill" style="left:70px;top:54px;width:178px;height:44px;background:#4D6BFE;font-size:21px;">方案</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">点一下 ✨,三步到位</div>
+  <!-- 三步卡 -->
+  <div class="abs card" style="left:70px;top:243px;width:365px;height:269px;"></div>
+  <div class="abs oval" style="left:98px;top:271px;width:67px;height:67px;background:#4D6BFE;font-size:36px;">1</div>
+  <div class="abs" style="left:98px;top:356px;width:307px;font-size:29px;font-weight:700;color:#F2F3F5;">写草稿</div>
+  <div class="abs" style="left:98px;top:410px;width:310px;font-size:20px;color:#9AA0AA;">输入框里随手敲,中英文都行,哪怕只有一句话</div>
+  <div class="abs" style="left:433px;top:346px;width:45px;font-size:39px;color:#4D6BFE;text-align:center;">→</div>
+  <div class="abs card" style="left:461px;top:243px;width:365px;height:269px;"></div>
+  <div class="abs oval" style="left:489px;top:271px;width:67px;height:67px;background:#4D6BFE;font-size:36px;">2</div>
+  <div class="abs" style="left:489px;top:356px;width:307px;font-size:29px;font-weight:700;color:#F2F3F5;">点 ✨ 优化</div>
+  <div class="abs" style="left:489px;top:410px;width:310px;font-size:20px;color:#9AA0AA;">实时流式输出:先五维诊断,再完整改写,逐字上屏</div>
+  <div class="abs" style="left:823px;top:346px;width:45px;font-size:39px;color:#4D6BFE;text-align:center;">→</div>
+  <div class="abs card" style="left:851px;top:243px;width:365px;height:269px;"></div>
+  <div class="abs oval" style="left:879px;top:271px;width:67px;height:67px;background:#4D6BFE;font-size:36px;">3</div>
+  <div class="abs" style="left:879px;top:356px;width:307px;font-size:29px;font-weight:700;color:#F2F3F5;">一键采用</div>
+  <div class="abs" style="left:879px;top:410px;width:310px;font-size:20px;color:#9AA0AA;">替换输入框(可撤回)/ 复制 / 不满意重新优化</div>
+  <div class="abs" style="left:70px;top:566px;width:1139px;font-size:24px;font-style:italic;color:#8FA3FF;">全程不打断心流:不弹窗、不切页面,就在你打字的那个输入框旁边。</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s4">
+  <div class="abs pill" style="left:70px;top:54px;width:178px;height:44px;background:#4D6BFE;font-size:21px;">实拍</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">一条草稿的 14 秒</div>
+  <img class="shot" src="../screenshots/optimize-panel.png" style="left:70px;top:218px;width:838px;height:449px;">
+  <!-- 右侧四张角标卡 -->
+  <div class="abs card" style="left:934px;top:228px;width:275px;height:95px;background:#262932;"></div>
+  <div class="abs" style="left:954px;top:236px;width:243px;font-size:21px;font-weight:700;color:#4D6BFE;">五维诊断</div>
+  <div class="abs" style="left:954px;top:270px;width:246px;font-size:15px;color:#9AA0AA;">目标/上下文/约束/结构/输出规格,逐条指出问题与建议</div>
+  <div class="abs card" style="left:934px;top:338px;width:275px;height:95px;background:#262932;"></div>
+  <div class="abs" style="left:954px;top:346px;width:243px;font-size:21px;font-weight:700;color:#3FB950;">优化结果</div>
+  <div class="abs" style="left:954px;top:380px;width:246px;font-size:15px;color:#9AA0AA;">结构化改写,缺失信息以 [待补充] 标出,绝不编造</div>
+  <div class="abs card" style="left:934px;top:448px;width:275px;height:95px;background:#262932;"></div>
+  <div class="abs" style="left:954px;top:456px;width:243px;font-size:21px;font-weight:700;color:#D29922;">路由徽章</div>
+  <div class="abs" style="left:954px;top:490px;width:246px;font-size:15px;color:#9AA0AA;">实际用的模型与耗时,一眼可信</div>
+  <div class="abs card" style="left:934px;top:558px;width:275px;height:95px;background:#262932;"></div>
+  <div class="abs" style="left:954px;top:566px;width:243px;font-size:21px;font-weight:700;color:#4D6BFE;">操作栏</div>
+  <div class="abs" style="left:954px;top:600px;width:246px;font-size:15px;color:#9AA0AA;">替换输入框(可撤回)· 复制 · 重新优化 · 关闭</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s5">
+  <div class="abs pill" style="left:70px;top:54px;width:252px;height:44px;background:#4D6BFE;font-size:21px;">差异 1 · 会话感知</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">它读得懂你们刚才聊了什么</div>
+  <div class="abs card" style="left:70px;top:230px;width:550px;height:198px;"></div>
+  <div class="abs pill" style="left:96px;top:253px;width:192px;height:41px;background:#D29922;font-size:19px;">新会话 · 无上下文</div>
+  <div class="abs" style="left:96px;top:307px;width:499px;font-size:22px;color:#F2F3F5;">按结构模板规范化:角色 / 任务 / 背景 / 约束 / 输出格式,缺失关键信息以 [待补充] 标出。</div>
+  <div class="abs card" style="left:70px;top:448px;width:550px;height:198px;"></div>
+  <div class="abs pill" style="left:96px;top:471px;width:243px;height:41px;background:#3FB950;font-size:19px;">聊了一会儿 · 有上下文</div>
+  <div class="abs" style="left:96px;top:525px;width:499px;font-size:22px;color:#F2F3F5;">提炼你们的真实目的,顺着草稿润色:不套模板、不重复追问已回答的内容、已否决的方向不再重提。</div>
+  <div class="abs card" style="left:659px;top:230px;width:550px;height:416px;background:#262932;"></div>
+  <div class="abs" style="left:685px;top:253px;width:499px;font-size:24px;font-weight:700;color:#8FA3FF;">真实案例(社区群接龙)</div>
+  <div class="abs" style="left:685px;top:307px;width:499px;font-size:22px;color:#F2F3F5;line-height:1.15;">草稿:帮我重新设计一下这个接龙<br><br>上下文:200 人闲置群 · 上次仅十几人参与 · 复盘:奖品差、格式乱<br><br>优化稿直接写出:群 200 余人、上次参与仅十几人、奖品吸引力不足与格式混乱的针对性方案——<b style="color:#3FB950;">一个字都没多问。</b></div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s6">
+  <div class="abs pill" style="left:70px;top:54px;width:252px;height:44px;background:#4D6BFE;font-size:21px;">差异 2 · 保真纪律</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">不是改得更花,是改得更准</div>
+  <!-- 2x2 卡 -->
+  <div class="abs card" style="left:70px;top:237px;width:557px;height:182px;"></div>
+  <div class="abs oval" style="left:96px;top:263px;width:51px;height:51px;background:#4D6BFE;font-size:25px;">✓</div>
+  <div class="abs" style="left:165px;top:259px;width:435px;font-size:25px;font-weight:700;color:#F2F3F5;">语义等价底线</div>
+  <div class="abs" style="left:165px;top:308px;width:442px;font-size:19px;color:#9AA0AA;">你说过的对象、数量、范围、禁止项,一个都不许被替换、扩大或反转</div>
+  <div class="abs card" style="left:659px;top:237px;width:557px;height:182px;"></div>
+  <div class="abs oval" style="left:685px;top:263px;width:51px;height:51px;background:#4D6BFE;font-size:25px;">✓</div>
+  <div class="abs" style="left:754px;top:259px;width:435px;font-size:25px;font-weight:700;color:#F2F3F5;">来源可回溯</div>
+  <div class="abs" style="left:754px;top:308px;width:442px;font-size:19px;color:#9AA0AA;">每个具体化细节都能回溯到草稿或上下文;推断处用「如无特别说明/默认」措辞</div>
+  <div class="abs card" style="left:70px;top:445px;width:557px;height:182px;"></div>
+  <div class="abs oval" style="left:96px;top:471px;width:51px;height:51px;background:#4D6BFE;font-size:25px;">✓</div>
+  <div class="abs" style="left:165px;top:467px;width:435px;font-size:25px;font-weight:700;color:#F2F3F5;">保真 &gt; 长度</div>
+  <div class="abs" style="left:165px;top:516px;width:442px;font-size:19px;color:#9AA0AA;">输出前逐要素自检:要素缺失比冗长更严重——先保真,再谈精炼</div>
+  <div class="abs card" style="left:659px;top:445px;width:557px;height:182px;"></div>
+  <div class="abs oval" style="left:685px;top:471px;width:51px;height:51px;background:#4D6BFE;font-size:25px;">✓</div>
+  <div class="abs" style="left:754px;top:467px;width:435px;font-size:25px;font-weight:700;color:#F2F3F5;">不编造</div>
+  <div class="abs" style="left:754px;top:516px;width:442px;font-size:19px;color:#9AA0AA;">缺失的关键信息以 [待补充:…] 标出交还给你,而不是替你做决定</div>
+  <div class="abs" style="left:70px;top:643px;width:1139px;font-size:23px;font-style:italic;color:#8FA3FF;">这套纪律让「优化」不等于「自由发挥」——它改写表达,不篡改意图。</div>
+</div>
+
+<div class="slide" id="s7">
+  <div class="abs pill" style="left:70px;top:54px;width:252px;height:44px;background:#4D6BFE;font-size:21px;">差异 3 · 透明可控</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">每一步都看得见、收得回</div>
+  <!-- 四行 -->
+  <div class="abs card" style="left:70px;top:228px;width:1139px;height:92px;"></div>
+  <div class="abs pill" style="left:92px;top:250px;width:79px;height:49px;background:#4D6BFE;border-radius:10px;font-size:21px;">⌨</div>
+  <div class="abs" style="left:198px;top:228px;width:269px;height:92px;display:flex;align-items:center;font-size:25px;font-weight:700;color:#F2F3F5;">流式逐字上屏</div>
+  <div class="abs" style="left:480px;top:228px;width:710px;height:92px;display:flex;align-items:center;font-size:20px;color:#9AA0AA;">诊断与改写实时流式显示,几秒出首字,不用干等转圈</div>
+  <div class="abs card" style="left:70px;top:337px;width:1139px;height:92px;"></div>
+  <div class="abs pill" style="left:92px;top:359px;width:79px;height:49px;background:#4D6BFE;border-radius:10px;font-size:21px;">Esc</div>
+  <div class="abs" style="left:198px;top:337px;width:269px;height:92px;display:flex;align-items:center;font-size:25px;font-weight:700;color:#F2F3F5;">取消不丢内容</div>
+  <div class="abs" style="left:480px;top:337px;width:710px;height:92px;display:flex;align-items:center;font-size:20px;color:#9AA0AA;">生成中按 Esc,已生成的部分定格保留,可续跑或关闭</div>
+  <div class="abs card" style="left:70px;top:446px;width:1139px;height:92px;"></div>
+  <div class="abs pill" style="left:92px;top:468px;width:79px;height:49px;background:#4D6BFE;border-radius:10px;font-size:21px;">↩</div>
+  <div class="abs" style="left:198px;top:446px;width:269px;height:92px;display:flex;align-items:center;font-size:25px;font-weight:700;color:#F2F3F5;">替换可撤回</div>
+  <div class="abs" style="left:480px;top:446px;width:710px;height:92px;display:flex;align-items:center;font-size:20px;color:#9AA0AA;">一键替换输入框,不满意一键撤回;改过的稿子撤回入口自动失效</div>
+  <div class="abs card" style="left:70px;top:555px;width:1139px;height:92px;"></div>
+  <div class="abs pill" style="left:92px;top:577px;width:79px;height:49px;background:#4D6BFE;border-radius:10px;font-size:21px;">🛡</div>
+  <div class="abs" style="left:198px;top:555px;width:269px;height:92px;display:flex;align-items:center;font-size:25px;font-weight:700;color:#F2F3F5;">错误如实透传</div>
+  <div class="abs" style="left:480px;top:555px;width:710px;height:92px;display:flex;align-items:center;font-size:20px;color:#9AA0AA;">模型/网络错误原样呈现 + 一键重试;本地安全围栏拒绝跨站伪造请求</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s8">
+  <div class="abs pill" style="left:70px;top:54px;width:140px;height:44px;background:#4D6BFE;font-size:21px;">设置</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">所有行为,一个卡片配好</div>
+  <img class="shot" src="../screenshots/settings-expanded.png" style="left:474px;top:220px;width:736px;height:459px;">
+  <div class="abs card" style="left:70px;top:228px;width:384px;height:97px;"></div>
+  <div class="abs" style="left:92px;top:238px;width:346px;font-size:23px;font-weight:700;color:#8FA3FF;">模型路由</div>
+  <div class="abs" style="left:92px;top:276px;width:346px;font-size:17px;color:#9AA0AA;">跟随当前会话(默认)或从目录固定;主路由失败自动回退</div>
+  <div class="abs card" style="left:70px;top:340px;width:384px;height:97px;"></div>
+  <div class="abs" style="left:92px;top:350px;width:346px;font-size:23px;font-weight:700;color:#8FA3FF;">快速模式</div>
+  <div class="abs" style="left:92px;top:388px;width:346px;font-size:17px;color:#9AA0AA;">跳过诊断只出结果,等待约减半</div>
+  <div class="abs card" style="left:70px;top:452px;width:384px;height:97px;"></div>
+  <div class="abs" style="left:92px;top:462px;width:346px;font-size:23px;font-weight:700;color:#8FA3FF;">上下文开关</div>
+  <div class="abs" style="left:92px;top:500px;width:346px;font-size:17px;color:#9AA0AA;">一键关闭会话感知,只看草稿本身</div>
+  <div class="abs card" style="left:70px;top:564px;width:384px;height:97px;"></div>
+  <div class="abs" style="left:92px;top:574px;width:346px;font-size:23px;font-weight:700;color:#8FA3FF;">实时生效</div>
+  <div class="abs" style="left:92px;top:612px;width:346px;font-size:17px;color:#9AA0AA;">改动即存即用,折叠态显示「模型 · 模式」摘要</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s9">
+  <div class="abs pill" style="left:70px;top:54px;width:140px;height:44px;background:#4D6BFE;font-size:21px;">定位</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">同类产品很多,像这样的只有一个</div>
+  <table class="abs" style="left:70px;top:230px;border-collapse:collapse;width:1139px;font-size:19px;color:#9AA0AA;">
+    <tr style="background:#262932;">
+      <th style="border:1px solid #31343D;padding:8px 10px;width:192px;"></th>
+      <th style="border:1px solid #31343D;padding:8px 10px;color:#9AA0AA;font-weight:700;">云端优化器</th>
+      <th style="border:1px solid #31343D;padding:8px 10px;color:#9AA0AA;font-weight:700;">浏览器插件</th>
+      <th style="border:1px solid #31343D;padding:8px 10px;color:#9AA0AA;font-weight:700;">DSH 同类插件</th>
+      <th style="border:1px solid #31343D;padding:8px 10px;color:#8FA3FF;font-weight:700;">本插件</th>
+    </tr>
+    <tr><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">运行位置</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">云端 API</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">浏览器</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">本机</td><td style="border:1px solid #31343D;padding:8px 10px;background:#1E2642;color:#F2F3F5;font-weight:700;">本机</td></tr>
+    <tr><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">会话上下文</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">✗ 只看一句话</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">✗</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">部分</td><td style="border:1px solid #31343D;padding:8px 10px;background:#1E2642;color:#F2F3F5;font-weight:700;">✓ 全程感知</td></tr>
+    <tr><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">保真纪律</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">✗ 黑盒改写</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">✗</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">借鉴本插件</td><td style="border:1px solid #31343D;padding:8px 10px;background:#1E2642;color:#F2F3F5;font-weight:700;">✓ 五重自检</td></tr>
+    <tr><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">价格</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">订阅制(标杆已宣布停服)</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">免费+付费</td><td style="border:1px solid #31343D;padding:8px 10px;background:#22242B;">免费</td><td style="border:1px solid #31343D;padding:8px 10px;background:#1E2642;color:#F2F3F5;font-weight:700;">免费开源</td></tr>
+  </table>
+  <div class="abs" style="left:70px;top:604px;width:1139px;font-size:23px;color:#D29922;">品类标杆 PromptPerfect 已宣布 2026 年 9 月停服——本地、开源、上下文感知的一键优化,正是空窗。</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s10">
+  <div class="abs pill" style="left:70px;top:54px;width:140px;height:44px;background:#4D6BFE;font-size:21px;">安装</div>
+  <div class="abs" style="left:70px;top:110px;width:1139px;font-size:53px;font-weight:700;color:#F2F3F5;">30 秒装好,现在就试</div>
+  <div class="abs card" style="left:70px;top:243px;width:1139px;height:134px;background:#0F1220;"></div>
+  <div class="abs code" style="left:102px;top:253px;width:1075px;height:115px;display:flex;align-items:center;font-size:23px;line-height:1.5;"><span style="color:#8FA3FF;">dsh plugin --profile web add </span><span style="color:#F2F3F5;">https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/dsh-prompt-optimizer.tgz</span></div>
+  <div class="abs card" style="left:70px;top:429px;width:365px;height:147px;"></div>
+  <div class="abs" style="left:96px;top:448px;width:314px;font-size:25px;font-weight:700;color:#F2F3F5;">一行命令</div>
+  <div class="abs" style="left:96px;top:494px;width:320px;font-size:18px;color:#9AA0AA;">免构建,装完重启 dsh web 即用</div>
+  <div class="abs card" style="left:474px;top:429px;width:365px;height:147px;"></div>
+  <div class="abs" style="left:500px;top:448px;width:314px;font-size:25px;font-weight:700;color:#F2F3F5;">MIT 开源</div>
+  <div class="abs" style="left:500px;top:494px;width:320px;font-size:18px;color:#9AA0AA;">github.com/Y1X1n/dsh-prompt-optimizer</div>
+  <div class="abs card" style="left:878px;top:429px;width:365px;height:147px;"></div>
+  <div class="abs" style="left:904px;top:448px;width:314px;font-size:25px;font-weight:700;color:#F2F3F5;">62 项测试</div>
+  <div class="abs" style="left:904px;top:494px;width:320px;font-size:18px;color:#9AA0AA;">双语文档 · 兼容 DSH 0.1.0/0.1.1 全线</div>
+  <div class="abs" style="left:70px;top:620px;width:1139px;font-size:19px;color:#9AA0AA;">要求:已安装 dsh CLI(npx @deepseek-ai/dsh web 可用的环境)</div>
+  <div class="abs" style="left:70px;top:673px;width:640px;font-size:16px;color:#9AA0AA;">dsh-prompt-optimizer · DeepSeek Harness 插件</div>
+</div>
+
+<div class="slide" id="s11">
+  <div class="abs" style="left:1043px;top:172px;width:147px;height:147px;font-size:115px;color:#4D6BFE;text-align:center;">✨</div>
+  <div class="abs" style="left:70px;top:256px;width:920px;font-size:73px;font-weight:700;color:#F2F3F5;line-height:1.1;">让你的每一句话<br>都被认真对待</div>
+  <div class="abs card" style="left:74px;top:493px;width:627px;height:64px;background:#0F1220;"></div>
+  <div class="abs code" style="left:100px;top:493px;width:602px;height:64px;display:flex;align-items:center;font-size:24px;color:#8FA3FF;">github.com/Y1X1n/dsh-prompt-optimizer</div>
+  <div class="abs" style="left:70px;top:582px;width:1139px;font-size:23px;color:#9AA0AA;">觉得有用的话,一个 Star 就是最好的支持 ⭐</div>
+  <div class="abs" style="left:70px;top:659px;width:1139px;font-size:18px;color:#9AA0AA;">dsh-prompt-optimizer v0.3.12 · MIT · DeepSeek Harness 0.1.0+/0.1.1</div>
+</div>
+<script>
+  // ?s=N 单页模式:QA 逐页截图用(脚本必须在 body 末尾,否则 .slide 尚未解析)
+  const single = new URLSearchParams(location.search).get("s");
+  if (single) {
+    document.querySelectorAll(".slide").forEach((e) => { if (e.id !== "s" + single) e.style.display = "none" });
+    document.body.style.margin = "0";
+    document.querySelectorAll(".slide").forEach((e) => { e.style.margin = "0" });
+  }
+</script>
+</body>
+</html>
