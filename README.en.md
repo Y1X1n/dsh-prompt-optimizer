@@ -1,6 +1,6 @@
 # dsh-prompt-optimizer
 
-[中文](README.md) | **English**
+[中文](README.md) | **English** | 🐣 [Beginner guide (中文)](README.simple.md)
 
 [![CI](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@y1x1n/dsh-prompt-optimizer?label=npm&color=cb3837)](https://www.npmjs.com/package/@y1x1n/dsh-prompt-optimizer)
@@ -13,6 +13,25 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 
 - **Host side**: registers two routes, `POST /dsh-prompt-optimizer/optimize` (SSE streaming) and `POST /dsh-prompt-optimizer/test-model` (connectivity probe), and drives `ctx.llm` for the "analyze + rewrite" call.
 - **Client side**: injects the button into the `conversation.input.right` slot, the result panel into `conversation.input.dock` (a full-width row above the input card, same family as TodoDock — renders on the new-session screen too and never covers the input box), and a collapsible settings card into `settings.plugin.item`. UI copy follows the DSH interface language (中文 / English).
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [From a Release (recommended, no build)](#from-a-release-recommended-no-build)
+  - [From source (tarball)](#from-source-tarball)
+  - [From GitHub](#from-github)
+  - [Uninstall](#uninstall)
+- [Compatibility](#compatibility)
+- [FAQ](#faq)
+- [Verification status](#verification-status)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [Security notes](#security-notes)
+- [Contributors](#contributors)
+- [License](#license)
+
+> 🐣 **First time using dsh plugins?** See the [beginner guide](README.simple.md) (in Chinese): three steps to install, one click to use.
 
 ![The result panel: five-dimension diagnosis and the rewrite streamed live, with replace/undo/copy; the badge shows the actual route and duration](docs/screenshots/optimize-panel.png)
 

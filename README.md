@@ -1,6 +1,6 @@
 # dsh-prompt-optimizer
 
-**中文** | [English](README.en.md)
+**中文** | [English](README.en.md) | [🐣 小白版](README.simple.md)
 
 [![CI](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@y1x1n/dsh-prompt-optimizer?label=npm&color=cb3837)](https://www.npmjs.com/package/@y1x1n/dsh-prompt-optimizer)
@@ -13,6 +13,25 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 
 - **Host 半侧**:注册 `POST /dsh-prompt-optimizer/optimize`(SSE 流式)与 `POST /dsh-prompt-optimizer/test-model`(连通性探活)两条路由,调用 `ctx.llm` 完成「分析 + 改写」。
 - **Client 半侧**:向 `conversation.input.right` 槽位注入按钮,向 `conversation.input.dock` 注入结果面板(输入卡上方整行、与 TodoDock 同族,新会话界面也渲染,且不遮挡输入框),向 `settings.plugin.item` 注入可折叠的设置卡片(设置页自动获得配置界面,无需单独开发页面)。界面文案跟随 DSH 界面语言(中文 / English)。
+
+## 目录
+
+- [功能](#功能)
+- [安装](#安装)
+  - [从 Release 安装(推荐,免构建)](#从-release-安装推荐免构建)
+  - [本地源码安装(tarball)](#本地源码安装tarball)
+  - [从 GitHub 安装](#从-github-安装)
+  - [卸载](#卸载)
+- [兼容性](#兼容性)
+- [常见问题](#常见问题)
+- [验证状态](#验证状态)
+- [工作原理](#工作原理)
+- [开发](#开发)
+- [安全说明](#安全说明)
+- [贡献者](#贡献者)
+- [License](#license)
+
+> 🐣 **第一次用 dsh 插件?** 直接看[小白版指南](README.simple.md):三步装好、点按钮就用,全程大白话。
 
 ![结果面板:五维诊断与优化稿流式上屏,可替换/撤回/复制;徽章显示实际路由与用时](docs/screenshots/optimize-panel.png)
 
