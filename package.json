@@ -1,10 +1,30 @@
 {
   "name": "@y1x1n/dsh-prompt-optimizer",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "DeepSeek Harness 插件:在发送栏旁一键分析并优化提示词(复用当前会话模型)",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Y1X1n/dsh-prompt-optimizer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Y1X1n/dsh-prompt-optimizer/issues"
+  },
+  "homepage": "https://github.com/Y1X1n/dsh-prompt-optimizer#readme",
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "harness",
+    "prompt",
+    "optimizer",
+    "plugin",
+    "cordis"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",

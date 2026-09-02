@@ -314,7 +314,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           <span style={styles.headerDesc}>{expanded ? t('settings.desc') : summaryText}</span>
         </button>
         <a
-          className="dsh-po-btn"
+          className="dsh-po-btn dsh-po-repo-link"
           href={REPO_URL}
           target="_blank"
           rel="noopener noreferrer"

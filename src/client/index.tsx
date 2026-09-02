@@ -38,6 +38,9 @@ function ensureFocusStyles(): void {
   style.id = ID
   style.textContent =
     '.dsh-po-btn:focus-visible{outline:2px solid var(--dsw-alias-state-focus-ring, #4f7cf7);outline-offset:2px;border-radius:4px;}'
+    // 设置卡标题栏的 GitHub 仓库链接:hover 提亮 + 淡背景,给可点击性一个视觉反馈。
+    + '.dsh-po-repo-link{transition:color 0.15s ease,background-color 0.15s ease;}'
+    + '.dsh-po-repo-link:hover{color:var(--dsw-alias-label-primary, inherit);background-color:var(--dsw-alias-fill-secondary, rgba(128,128,128,0.12));}'
   document.head.appendChild(style)
 }
 
