@@ -2,4 +2,4 @@
 # 插件行按包名引用,由 Node 模块解析在 profile 的 node_modules 中找到本包。
 - insert:
     - id: prompt-optimizer
-      name: 'dsh-prompt-optimizer'
+      name: '@y1x1n/dsh-prompt-optimizer'

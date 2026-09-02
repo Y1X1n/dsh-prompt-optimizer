@@ -44,19 +44,19 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 ### 从 Release 安装(推荐,免构建)
 
 ```sh
-# 下载 dsh-prompt-optimizer.tgz(始终指向最新版),再安装本地文件
-dsh plugin --profile web add ./dsh-prompt-optimizer.tgz
+# 下载 y1x1n-dsh-prompt-optimizer.tgz(始终指向最新版),再安装本地文件
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
 ```
 
-下载地址:https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/dsh-prompt-optimizer.tgz
+下载地址:https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
 
 ### 本地源码安装(tarball)
 
 ```sh
 cd dsh-prompt-optimizer
 npm install --legacy-peer-deps   # prepare 钩子会自动构建 lib/
-npm pack                          # 产出 dsh-prompt-optimizer-<version>.tgz
-dsh plugin --profile web add ./dsh-prompt-optimizer-<version>.tgz
+npm pack                          # 产出 y1x1n-dsh-prompt-optimizer-<version>.tgz
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<version>.tgz
 ```
 
 然后(重新)启动 `dsh web`,打开 Web UI 即可在发送栏旁看到按钮。
@@ -74,7 +74,7 @@ Git 安装拉取的是源码,本包通过 `prepare` 脚本在安装时自包含�
 ### 卸载
 
 ```sh
-dsh plugin --profile web remove dsh-prompt-optimizer
+dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 ```
 
 ## 兼容性
@@ -174,6 +174,12 @@ dsh-prompt-optimizer/
 - HTTP 路由注册在 dsh 自带的 Web 服务器上。默认监听 `127.0.0.1`;若把 dsh 暴露到局域网(`0.0.0.0`),本插件的优化接口同样可被局域网调用——它会消耗你配置的模型额度,请知悉。
 - 两条路由均带**来源围栏**:带 `Origin` 头的请求(浏览器 POST 必带)必须与 `Host` 同源,且 `Host` 必须是回环地址或本机实际地址——网页侧的跨站伪造请求(CSRF)与 DNS rebinding 会被 403 拒绝;不带 `Origin` 的命令行调用不受影响。
 - 插件不持有任何 API Key:模型调用全部经由 Harness 已配置的 `ctx.llm` 路由。
+
+## 贡献者
+
+感谢以下贡献者为本项目提交改进(见 [贡献指南](CONTRIBUTING.md)):
+
+- [@ruijiaang-lab](https://github.com/ruijiaang-lab) — 贡献指南([#2](https://github.com/Y1X1n/dsh-prompt-optimizer/pull/2))
 
 ## License
 

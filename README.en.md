@@ -44,19 +44,19 @@ Prerequisite: the `dsh` CLI (an environment where `npx @deepseek-ai/dsh web` wor
 ### From a Release (recommended, no build)
 
 ```sh
-# Download dsh-prompt-optimizer.tgz (always points to the latest release), then install the local file
-dsh plugin --profile web add ./dsh-prompt-optimizer.tgz
+# Download y1x1n-dsh-prompt-optimizer.tgz (always points to the latest release), then install the local file
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
 ```
 
-Download: https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/dsh-prompt-optimizer.tgz
+Download: https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
 
 ### From source (tarball)
 
 ```sh
 cd dsh-prompt-optimizer
 npm install --legacy-peer-deps   # the prepare hook builds lib/ automatically
-npm pack                          # produces dsh-prompt-optimizer-<version>.tgz
-dsh plugin --profile web add ./dsh-prompt-optimizer-<version>.tgz
+npm pack                          # produces y1x1n-dsh-prompt-optimizer-<version>.tgz
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<version>.tgz
 ```
 
 Then (re)start `dsh web` and open the Web UI — the button appears next to the composer.
@@ -74,7 +74,7 @@ Git installs pull the source; this package self-builds at install time via its `
 ### Uninstall
 
 ```sh
-dsh plugin --profile web remove dsh-prompt-optimizer
+dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 ```
 
 ## Compatibility
@@ -172,6 +172,12 @@ dsh-prompt-optimizer/
 - The HTTP routes are registered on dsh's own web server, which listens on `127.0.0.1` by default. If you expose dsh to your LAN (`0.0.0.0`), this plugin's optimize endpoint becomes callable from the LAN too — it consumes your configured model quota; be aware.
 - Both routes enforce an **origin fence**: requests carrying an `Origin` header (browser POSTs always do) must match `Host`, and `Host` must be a loopback address or the machine's actual local address — cross-site forged requests (CSRF) and DNS rebinding get a 403; command-line calls without `Origin` are unaffected.
 - The plugin holds no API keys: every model call goes through the Harness-configured `ctx.llm` routes.
+
+## Contributors
+
+Thanks to the following contributors for improvements to this project (see the [contributing guide](CONTRIBUTING.md)):
+
+- [@ruijiaang-lab](https://github.com/ruijiaang-lab) — contributing guide ([#2](https://github.com/Y1X1n/dsh-prompt-optimizer/pull/2))
 
 ## License
 
