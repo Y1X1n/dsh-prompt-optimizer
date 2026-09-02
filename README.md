@@ -80,6 +80,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 ## 兼容性
 
 - 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**(与 `npx @deepseek-ai/dsh@0.1.0-rc.7` 内置包一致);已在 **0.1.0-rc.8** 运行时实测通过(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用),并在 **0.1.1-rc.2** 上复测通过(2026-08-27,Windows:`--dump-config` 组合层、路由注册、client bundle 均正常)。
+- 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
 - **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON),成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。
 - 客户端与 Host 需同版本(SSE 协议是私有约定):升级插件后请重启 `dsh web` 并刷新浏览器页面。
@@ -96,7 +97,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## 验证状态
 
-已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
+已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
 
 - 组合层加载:`--dump-config` 出现 `# == dsh-prompt-optimizer` 层;
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;

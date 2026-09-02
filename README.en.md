@@ -80,6 +80,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 ## Compatibility
 
 - Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), and re-verified on **0.1.1-rc.2** (2026-08-27, Windows: `--dump-config` composition layer, route registration, client bundle all healthy).
+- Verified on **macOS** via automated tests (2026-09-02, macOS 26.5 (Darwin 25.5.0), Node.js v26.0.0; after `npm install --legacy-peer-deps`, `sync:types` / `typecheck` / `build` / `npm test` all pass — 62 tests green); CI now runs typecheck and the full suite on both ubuntu-latest and macos-latest.
 - Protocol contract: `/dsh-prompt-optimizer/optimize` returns 400/405/409/413 as plain JSON on pre-check failure and switches to an SSE stream on success (model errors arrive as `error` events); `/dsh-prompt-optimizer/test-model` **always returns HTTP 200** with an `ok` field in the body (a probe is application-level semantics, deliberately not mapped to transport status codes) — integrate against `ok`, not the status code.
 - The HTTP carrier service name has drifted between releases (`httpServer` in the npm 0.0.1-rc.x type packages, `webServer` in the 0.1.0-rc.x runtime): the plugin waits on both names via `ctx.inject` with no static hard dependency — if the name changes again, only this plugin's routes fail to register (with a log warning after 10s); the Harness startup is never dragged down.
 - Client and Host must be the same version (the SSE protocol is a private contract): after upgrading, restart `dsh web` and refresh the browser.
@@ -96,7 +97,7 @@ dsh plugin --profile web remove dsh-prompt-optimizer
 
 ## Verification status
 
-Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, Windows — see Compatibility); v0.3.9–0.3.11 were additionally verified end-to-end on a **third-party free model** (openrouter `minimax/minimax-m3:free`, which emits no marker format): both strategies, element-by-element fidelity, `[TODO]` markers, memory chain, and cancel-keeps-content all behave as designed — and this live testing is what surfaced the fast-mode false-positive fixed in v0.3.10/11.
+Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, Windows — see Compatibility); macOS automated verification passed (2026-09-02, macOS 26.5, all 62 tests green, and CI now permanently runs the full suite on macos-latest); v0.3.9–0.3.11 were additionally verified end-to-end on a **third-party free model** (openrouter `minimax/minimax-m3:free`, which emits no marker format): both strategies, element-by-element fidelity, `[TODO]` markers, memory chain, and cancel-keeps-content all behave as designed — and this live testing is what surfaced the fast-mode false-positive fixed in v0.3.10/11.
 
 - Composition-layer load: `--dump-config` shows the `# == dsh-prompt-optimizer` layer;
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
