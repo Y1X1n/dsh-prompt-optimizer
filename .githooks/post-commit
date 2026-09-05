@@ -1,0 +1,4 @@
+#!/bin/sh
+# ima 开发档案自动同步:每次 commit 追加摘要到 ima 笔记
+node scripts/ima-sync.cjs
+exit 0
