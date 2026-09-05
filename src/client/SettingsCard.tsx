@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-client-connection/client'
 import { useT } from './i18n.js'
+import { GitHubIcon } from './GitHubIcon.js'
+
+/** 插件源码仓库地址(点击 GitHub 图标跳转)。 */
+const REPO_URL = 'https://github.com/Y1X1n/dsh-prompt-optimizer'
 
 /** 与 Host 侧 Config 对应的设置分节形状(仅客户端使用)。 */
 export interface OptimizerSettingsValue {
@@ -104,6 +108,19 @@ const styles = {
     background: 'var(--dsw-alias-button-tool-bar-fill, transparent)',
     color: 'var(--dsw-alias-label-primary, inherit)',
     cursor: 'pointer',
+  } as const,
+  // 标题右侧的 GitHub 仓库入口:点击在新标签打开仓库主页。
+  repoLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    marginLeft: 8,
+    padding: 4,
+    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
+    background: 'none',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    textDecoration: 'none',
   } as const,
 }
 
@@ -290,11 +307,25 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
 
     return (
       <section style={styles.card}>
-        <button className="dsh-po-btn" type="button" style={styles.headerBtn} onClick={toggle} aria-expanded={expanded}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+        <button className="dsh-po-btn" type="button" style={{ ...styles.headerBtn, flex: 1 }} onClick={toggle} aria-expanded={expanded}>
           <span style={{ ...styles.chevron, transform: expanded ? 'rotate(90deg)' : 'none' }}>▸</span>
           <span style={styles.title}>{t('panel.title')}</span>
           <span style={styles.headerDesc}>{expanded ? t('settings.desc') : summaryText}</span>
         </button>
+        <a
+          className="dsh-po-btn dsh-po-repo-link"
+          href={REPO_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={styles.repoLink}
+          title={t('settings.repoTitle')}
+          aria-label={t('settings.repoTitle')}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GitHubIcon size={16} />
+        </a>
+        </div>
         {expanded && (
           <div style={styles.body}>
         {snap.status === 'loading' && <div style={styles.hint}>{t('settings.loading')}</div>}

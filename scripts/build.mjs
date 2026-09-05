@@ -1,5 +1,6 @@
 import { build } from 'esbuild'
 import { mkdir } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 
 await mkdir('lib', { recursive: true })
 
@@ -41,9 +42,13 @@ await build({
 
 // Client 半:loader 的 lazy-CJS factory 形态(对齐官方包的产物结构)。
 // react 与 @deepseek-ai/* 是页面运行时外部模块,不打包进 bundle。
+// 注意:loader id 必须等于插件 npm 包名 —— 宿主 client-modules 按包名 serve
+// bundle 并校验注册 id,不一致会被拒绝(Failed to load plugins,#4)。
+// 从 package.json 动态读取,避免改包名时 banner 失同步。
+const pkgName = JSON.parse(readFileSync('package.json', 'utf8')).name
 const banner = [
   'window.__ModuleLoader__.load({',
-  '\tid: "dsh-prompt-optimizer",',
+  `\tid: ${JSON.stringify(pkgName)},`,
   '\tfactory: (require) => {',
   '\t\tvar module = { exports: {} };',
   '\t\tvar exports = module.exports;',

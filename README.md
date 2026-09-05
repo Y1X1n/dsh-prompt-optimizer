@@ -1,13 +1,37 @@
 # dsh-prompt-optimizer
 
-**中文** | [English](README.en.md)
+**中文** | [English](README.en.md) | [🐣 小白版](README.simple.md)
 
 [![CI](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@y1x1n/dsh-prompt-optimizer?label=npm&color=cb3837)](https://www.npmjs.com/package/@y1x1n/dsh-prompt-optimizer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Y1X1n/dsh-prompt-optimizer?label=release)](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest)
+[![Stars](https://img.shields.io/github/stars/Y1X1n/dsh-prompt-optimizer?logo=github)](https://github.com/Y1X1n/dsh-prompt-optimizer/stargazers)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」按钮(✨ 图标),一键分析并优化当前输入的提示词草稿,**结果经 SSE 流式逐段上屏**。优化调用默认复用当前会话的模型路由(每次点击实时读取,会话里切换模型立即生效)。
 
 - **Host 半侧**:注册 `POST /dsh-prompt-optimizer/optimize`(SSE 流式)与 `POST /dsh-prompt-optimizer/test-model`(连通性探活)两条路由,调用 `ctx.llm` 完成「分析 + 改写」。
 - **Client 半侧**:向 `conversation.input.right` 槽位注入按钮,向 `conversation.input.dock` 注入结果面板(输入卡上方整行、与 TodoDock 同族,新会话界面也渲染,且不遮挡输入框),向 `settings.plugin.item` 注入可折叠的设置卡片(设置页自动获得配置界面,无需单独开发页面)。界面文案跟随 DSH 界面语言(中文 / English)。
+
+## 目录
+
+- [功能](#功能)
+- [安装](#安装)
+  - [从 Release 安装(推荐,免构建)](#从-release-安装推荐免构建)
+  - [本地源码安装(tarball)](#本地源码安装tarball)
+  - [从 GitHub 安装](#从-github-安装)
+  - [卸载](#卸载)
+- [兼容性](#兼容性)
+- [常见问题](#常见问题)
+- [验证状态](#验证状态)
+- [工作原理](#工作原理)
+- [开发](#开发)
+- [安全说明](#安全说明)
+- [贡献者](#贡献者)
+- [License](#license)
+
+> 🐣 **第一次用 dsh 插件?** 直接看[小白版指南](README.simple.md):三步装好、点按钮就用,全程大白话。
 
 ![结果面板:五维诊断与优化稿流式上屏,可替换/撤回/复制;徽章显示实际路由与用时](docs/screenshots/optimize-panel.png)
 
@@ -44,19 +68,19 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 ### 从 Release 安装(推荐,免构建)
 
 ```sh
-# 下载 dsh-prompt-optimizer.tgz(始终指向最新版),再安装本地文件
-dsh plugin --profile web add ./dsh-prompt-optimizer.tgz
+# 下载 y1x1n-dsh-prompt-optimizer.tgz(始终指向最新版),再安装本地文件
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
 ```
 
-下载地址:https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/dsh-prompt-optimizer.tgz
+下载地址:https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
 
 ### 本地源码安装(tarball)
 
 ```sh
 cd dsh-prompt-optimizer
 npm install --legacy-peer-deps   # prepare 钩子会自动构建 lib/
-npm pack                          # 产出 dsh-prompt-optimizer-<version>.tgz
-dsh plugin --profile web add ./dsh-prompt-optimizer-<version>.tgz
+npm pack                          # 产出 y1x1n-dsh-prompt-optimizer-<version>.tgz
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<version>.tgz
 ```
 
 然后(重新)启动 `dsh web`,打开 Web UI 即可在发送栏旁看到按钮。
@@ -74,13 +98,25 @@ Git 安装拉取的是源码,本包通过 `prepare` 脚本在安装时自包含�
 ### 卸载
 
 ```sh
-dsh plugin --profile web remove dsh-prompt-optimizer
+dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 ```
 
 ## 兼容性
 
-- 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**(与 `npx @deepseek-ai/dsh@0.1.0-rc.7` 内置包一致);已在 **0.1.0-rc.8** 运行时实测通过(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用),并在 **0.1.1-rc.2** 上复测通过(2026-08-27,Windows:`--dump-config` 组合层、路由注册、client bundle 均正常)。
-- 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试。
+> **当前版本(v0.3.16)适配 DeepSeek Harness**:
+>
+> | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 |
+> |---|---|---|---|
+> | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
+> | **0.1.1-rc.2 及以下**(0.1.0-rc.7+) | ✅ 实测 | ✅ 实测 | ✅ 实测 |
+>
+> 同一份构建覆盖 0.1.0-rc.7 至 0.1.2 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
+
+- 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**;已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)。
+- 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
+- **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
+- **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
+- **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
 - **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON),成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。
 - 客户端与 Host 需同版本(SSE 协议是私有约定):升级插件后请重启 `dsh web` 并刷新浏览器页面。
@@ -175,6 +211,12 @@ dsh-prompt-optimizer/
 - HTTP 路由注册在 dsh 自带的 Web 服务器上。默认监听 `127.0.0.1`;若把 dsh 暴露到局域网(`0.0.0.0`),本插件的优化接口同样可被局域网调用——它会消耗你配置的模型额度,请知悉。
 - 两条路由均带**来源围栏**:带 `Origin` 头的请求(浏览器 POST 必带)必须与 `Host` 同源,且 `Host` 必须是回环地址或本机实际地址——网页侧的跨站伪造请求(CSRF)与 DNS rebinding 会被 403 拒绝;不带 `Origin` 的命令行调用不受影响。
 - 插件不持有任何 API Key:模型调用全部经由 Harness 已配置的 `ctx.llm` 路由。
+
+## 贡献者
+
+感谢以下贡献者为本项目提交改进(见 [贡献指南](CONTRIBUTING.md)):
+
+- [@ruijiaang-lab](https://github.com/ruijiaang-lab) — 贡献指南([#2](https://github.com/Y1X1n/dsh-prompt-optimizer/pull/2))
 
 ## License
 

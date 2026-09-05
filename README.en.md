@@ -1,13 +1,37 @@
 # dsh-prompt-optimizer
 
-[中文](README.md) | **English**
+[中文](README.md) | **English** | 🐣 [Beginner guide (中文)](README.simple.md)
 
 [![CI](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Y1X1n/dsh-prompt-optimizer/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@y1x1n/dsh-prompt-optimizer?label=npm&color=cb3837)](https://www.npmjs.com/package/@y1x1n/dsh-prompt-optimizer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Y1X1n/dsh-prompt-optimizer?label=release)](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest)
+[![Stars](https://img.shields.io/github/stars/Y1X1n/dsh-prompt-optimizer?logo=github)](https://github.com/Y1X1n/dsh-prompt-optimizer/stargazers)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the composer, one click analyzes and rewrites the prompt draft in your input box, with results **streamed section by section over SSE**. The optimization call reuses the current session's model route by default (read live on every click — switching models in the session takes effect immediately).
 
 - **Host side**: registers two routes, `POST /dsh-prompt-optimizer/optimize` (SSE streaming) and `POST /dsh-prompt-optimizer/test-model` (connectivity probe), and drives `ctx.llm` for the "analyze + rewrite" call.
 - **Client side**: injects the button into the `conversation.input.right` slot, the result panel into `conversation.input.dock` (a full-width row above the input card, same family as TodoDock — renders on the new-session screen too and never covers the input box), and a collapsible settings card into `settings.plugin.item`. UI copy follows the DSH interface language (中文 / English).
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [From a Release (recommended, no build)](#from-a-release-recommended-no-build)
+  - [From source (tarball)](#from-source-tarball)
+  - [From GitHub](#from-github)
+  - [Uninstall](#uninstall)
+- [Compatibility](#compatibility)
+- [FAQ](#faq)
+- [Verification status](#verification-status)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [Security notes](#security-notes)
+- [Contributors](#contributors)
+- [License](#license)
+
+> 🐣 **First time using dsh plugins?** See the [beginner guide](README.simple.md) (in Chinese): three steps to install, one click to use.
 
 ![The result panel: five-dimension diagnosis and the rewrite streamed live, with replace/undo/copy; the badge shows the actual route and duration](docs/screenshots/optimize-panel.png)
 
@@ -44,19 +68,19 @@ Prerequisite: the `dsh` CLI (an environment where `npx @deepseek-ai/dsh web` wor
 ### From a Release (recommended, no build)
 
 ```sh
-# Download dsh-prompt-optimizer.tgz (always points to the latest release), then install the local file
-dsh plugin --profile web add ./dsh-prompt-optimizer.tgz
+# Download y1x1n-dsh-prompt-optimizer.tgz (always points to the latest release), then install the local file
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
 ```
 
-Download: https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/dsh-prompt-optimizer.tgz
+Download: https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
 
 ### From source (tarball)
 
 ```sh
 cd dsh-prompt-optimizer
 npm install --legacy-peer-deps   # the prepare hook builds lib/ automatically
-npm pack                          # produces dsh-prompt-optimizer-<version>.tgz
-dsh plugin --profile web add ./dsh-prompt-optimizer-<version>.tgz
+npm pack                          # produces y1x1n-dsh-prompt-optimizer-<version>.tgz
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<version>.tgz
 ```
 
 Then (re)start `dsh web` and open the Web UI — the button appears next to the composer.
@@ -74,13 +98,25 @@ Git installs pull the source; this package self-builds at install time via its `
 ### Uninstall
 
 ```sh
-dsh plugin --profile web remove dsh-prompt-optimizer
+dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 ```
 
 ## Compatibility
 
-- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), and re-verified on **0.1.1-rc.2** (2026-08-27, Windows: `--dump-config` composition layer, route registration, client bundle all healthy).
-- Verified on **macOS** via automated tests (2026-09-02, macOS 26.5 (Darwin 25.5.0), Node.js v26.0.0; after `npm install --legacy-peer-deps`, `sync:types` / `typecheck` / `build` / `npm test` all pass — 62 tests green); CI now runs typecheck and the full suite on both ubuntu-latest and macos-latest.
+> **This version (v0.3.16) targets DeepSeek Harness**:
+>
+> | dsh version | Optimize route / model calls | Settings page (incl. GitHub link) | Composer button / result panel |
+> |---|---|---|---|
+> | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ verified | ✅ verified | ✅ verified |
+> | **0.1.1-rc.2 and below** (0.1.0-rc.7+) | ✅ verified | ✅ verified | ✅ verified |
+>
+> One build covers 0.1.0-rc.7 through 0.1.2; this annotation is maintained in every Release note from v0.3.15 onward, and earlier Release notes have been retroactively annotated.
+
+- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7**; verified on **0.1.0-rc.8** (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), re-verified on **0.1.1-rc.2** (2026-08-27), and adapted + verified on **0.1.2-rc.1 / 0.1.2-alpha.5** (2026-09-05/06, real-profile end-to-end smoke tests: composition layer, route SSE, client bundle, composer button and result panel, settings card).
+- Verified on **macOS** via automated tests (2026-09-02, macOS 26.5 (Darwin 25.5.0), Node.js v26.0.0; after `npm install --legacy-peer-deps`, `sync:types` / `typecheck` / `build` / `npm test` all pass — 62 tests green); CI now runs typecheck and the full suite on both ubuntu-latest and macos-latest (@ruijiaang-lab, #3).
+- **dsh-settings API compatibility layer**: the 0.1.2 line rewrote the settings API (standalone `installSettingsSection` removed, replaced by the `installSection` method on the `ctx.settings` service instance). 0.3.16+ feature-detects at runtime: uses the new interface when present, otherwise an inline equivalent (register + watch + unload fallback); when the settings service is absent it falls back to the composition-layer config.
+- **Client slot props dual form**: since 0.1.2 the composer slots are session-scoped — components read session/draft state via standard hooks (`useInput`/`useSession`), and registration uses the official two-layer shape (register inside an inject callback on the derived context, with an `inject(sessionId)` hook). Components dispatch on the props shape (hooks on 0.1.2, direct snapshots on older hosts), so both hosts share one build.
+- **Client bundle registration id**: the loader id in `lib/client.js` must equal the plugin npm package name (the host's client-modules validates registration against it); the client inject list no longer names `dsh-client-runtime`, which 0.1.2 merged away.
 - Protocol contract: `/dsh-prompt-optimizer/optimize` returns 400/405/409/413 as plain JSON on pre-check failure and switches to an SSE stream on success (model errors arrive as `error` events); `/dsh-prompt-optimizer/test-model` **always returns HTTP 200** with an `ok` field in the body (a probe is application-level semantics, deliberately not mapped to transport status codes) — integrate against `ok`, not the status code.
 - The HTTP carrier service name has drifted between releases (`httpServer` in the npm 0.0.1-rc.x type packages, `webServer` in the 0.1.0-rc.x runtime): the plugin waits on both names via `ctx.inject` with no static hard dependency — if the name changes again, only this plugin's routes fail to register (with a log warning after 10s); the Harness startup is never dragged down.
 - Client and Host must be the same version (the SSE protocol is a private contract): after upgrading, restart `dsh web` and refresh the browser.
@@ -173,6 +209,12 @@ dsh-prompt-optimizer/
 - The HTTP routes are registered on dsh's own web server, which listens on `127.0.0.1` by default. If you expose dsh to your LAN (`0.0.0.0`), this plugin's optimize endpoint becomes callable from the LAN too — it consumes your configured model quota; be aware.
 - Both routes enforce an **origin fence**: requests carrying an `Origin` header (browser POSTs always do) must match `Host`, and `Host` must be a loopback address or the machine's actual local address — cross-site forged requests (CSRF) and DNS rebinding get a 403; command-line calls without `Origin` are unaffected.
 - The plugin holds no API keys: every model call goes through the Harness-configured `ctx.llm` routes.
+
+## Contributors
+
+Thanks to the following contributors for improvements to this project (see the [contributing guide](CONTRIBUTING.md)):
+
+- [@ruijiaang-lab](https://github.com/ruijiaang-lab) — contributing guide ([#2](https://github.com/Y1X1n/dsh-prompt-optimizer/pull/2))
 
 ## License
 

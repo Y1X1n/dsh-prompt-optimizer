@@ -96,6 +96,7 @@ const dict = {
     'settings.validate.maxTokens': '请输入 1024–32768 之间的数字',
     'settings.validate.timeout': '请输入 10–600 之间的数字',
     'settings.validate.temperature': '请输入 0–2 之间的数字',
+    'settings.repoTitle': '在 GitHub 上查看源码 / 反馈问题',
   },
   en: {
     'button.optimize': 'Optimize',
@@ -173,6 +174,7 @@ const dict = {
     'settings.validate.maxTokens': 'Enter a number between 1024 and 32768',
     'settings.validate.timeout': 'Enter a number between 10 and 600',
     'settings.validate.temperature': 'Enter a number between 0 and 2',
+    'settings.repoTitle': 'View source / report issues on GitHub',
   },
 } as const
 
