@@ -310,18 +310,35 @@ export function apply(ctx: Context, config: Config) {
   }
 
   // 设置页命名空间:组合层配置作为 base,用户在 设置→插件配置 中的修改实时生效。
-  // 0.1.2-rc.1 API:installSection 挂在 SettingsProvider 实例上,经 ctx.inject
-  // 等待 settings 服务;服务缺席(测试环境/老版本)时跳过,current 保持组合层
-  // 配置 —— 与旧版 installSettingsSection 内部的回落语义一致。
+  // dsh-settings API 在 0.1.2 线重写(独立函数 installSettingsSection 移除,改为
+  // SettingsProvider 实例方法 installSection)。这里运行时按能力探测分派,保证
+  // 同一份构建向下兼容:
+  //  - settings.installSection 是函数(0.1.2-alpha.5+ / 0.1.2-rc.1)→ 新 API;
+  //  - 否则(0.1.0-rc.x / 0.1.1-rc.x)→ 旧独立函数的等价内联
+  //    (register{base} + setSource + watch + 卸载回落 entry,对照 0.1.0-rc.7 实现);
+  //  - settings 服务整体缺席 → current 保持组合层配置,行为与更早版本一致。
   let current = (): Config => config
   ctx.inject(['settings'], (sctx) => {
     const settings = (sctx as unknown as { settings?: SettingsProvider }).settings
     if (!settings) return
-    settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
+    const hooks = {
+      setSource: (source: () => Config) => {
         current = source
       },
       onChange: () => {},
+    }
+    if (typeof settings.installSection === 'function') {
+      settings.installSection(ctx, NS, Config, config, hooks)
+      return
+    }
+    const scope = settings.register(NS, Config, { base: config })
+    hooks.setSource(() => scope.get())
+    hooks.onChange()
+    const disposeWatch = scope.watch(() => hooks.onChange())
+    ctx.effect(() => () => {
+      disposeWatch()
+      hooks.setSource(() => config)
+      hooks.onChange()
     })
   })
   // 启动即对初始配置做一次非法枚举告警;请求期配置可能被实时改写,handler 内还会复查。

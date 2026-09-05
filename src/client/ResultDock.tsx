@@ -157,9 +157,22 @@ export function createResultDock(controller: OptimizerController) {
     const [analysisOpen, setAnalysisOpen] = useState(true)
     // O6:撤回后的正向反馈——头部短暂显示「已撤回 ✓」,避免用户以为没生效。
     const [undoneFlash, setUndoneFlash] = useState(false)
+    // 宿主双形态:0.1.2 起渲染器提供 useInput/useSession standard hooks;
+    // 旧版(0.1.0-rc.x/0.1.1-rc.x)渲染器直传 input/session 快照对象。
+    const p = props as ResultDockProps & {
+      useInput?: (selector: (s: unknown) => unknown) => unknown
+      useSession?: (selector: (s: unknown) => unknown) => unknown
+      input?: { draft?: string }
+      session?: { running?: boolean; queue?: unknown[] }
+      sessionId?: string
+      inputActions?: { setDraft(text: string): void }
+    }
+    const input = (p.useInput ? (p.useInput((s: unknown) => s) as { draft?: string }) : p.input) ?? {}
+    const session = (p.useSession ? (p.useSession((s: unknown) => s) as { running?: boolean; queue?: unknown[] }) : p.session) ?? {}
+    const inputActions = p.inputActions
     // controller 是会话间共享的单例:面板只对发起优化的那个会话渲染,
     // 避免切会话后旧结果跟着飘过来、甚至误替换别的会话的输入框。
-    const owns = state.open && state.last?.sessionId === props.sessionId
+    const owns = state.open && state.last?.sessionId === p.sessionId
 
     useEffect(() => {
       if (!owns) return
@@ -177,9 +190,9 @@ export function createResultDock(controller: OptimizerController) {
     // 发送即关闭:判定逻辑在 controller.shouldAutoClose(纯函数,有单测)。
     // 顺带限定 owns:其他会话的 dock 实例不得因自身状态变化影响本会话的撤回依据。
     const applied = state.applied
-    const draft = props.input.draft
-    const running = Boolean(props.session?.running)
-    const queued = props.session?.queue?.length ?? 0
+    const draft = input.draft ?? ''
+    const running = Boolean(session.running)
+    const queued = session.queue?.length ?? 0
     const prevRef = useRef({ running, queued })
     useEffect(() => {
       const prev = prevRef.current
@@ -267,12 +280,12 @@ export function createResultDock(controller: OptimizerController) {
       // 斜杠命令前缀拼回:优化只针对正文,命令词原样保留;
       // applied.text 必须是替换后的完整草稿(含前缀),否则撤回失效检测会误判为用户编辑。
       const nextDraft = state.last?.prefix ? `${state.last.prefix} ${result.optimized}` : result.optimized
-      controller.markApplied({ backup: props.input.draft, text: nextDraft })
-      props.inputActions.setDraft(nextDraft)
+      controller.markApplied({ backup: input.draft ?? '', text: nextDraft })
+      inputActions?.setDraft(nextDraft)
     }
     const onUndo = () => {
       if (!applied) return
-      props.inputActions.setDraft(applied.backup)
+      inputActions?.setDraft(applied.backup)
       controller.clearApplied()
       setUndoneFlash(true)
     }

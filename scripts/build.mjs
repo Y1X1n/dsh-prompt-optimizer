@@ -41,9 +41,11 @@ await build({
 
 // Client 半:loader 的 lazy-CJS factory 形态(对齐官方包的产物结构)。
 // react 与 @deepseek-ai/* 是页面运行时外部模块,不打包进 bundle。
+// 注意:loader id 必须等于插件 npm 包名 —— 宿主 client-modules 按包名 serve
+// bundle 并校验注册 id,不一致会被拒绝(Failed to load plugins)。
 const banner = [
   'window.__ModuleLoader__.load({',
-  '\tid: "dsh-prompt-optimizer",',
+  '\tid: "@y1x1n/dsh-prompt-optimizer",',
   '\tfactory: (require) => {',
   '\t\tvar module = { exports: {} };',
   '\t\tvar exports = module.exports;',

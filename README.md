@@ -103,11 +103,19 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 兼容性
 
-> **当前版本适配 DeepSeek Harness `0.1.2-rc.1`** | 向下兼容 `0.1.0-rc.7` 及以上 | 向上未在更新的 alpha 版本上验证。
-> 此标注从 v0.3.15 起在每个 Release 说明中固定维护;更早 Release 的说明已回溯补注。
+> **当前版本(v0.3.16)适配 DeepSeek Harness**:
+>
+> | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 |
+> |---|---|---|---|
+> | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
+> | **0.1.1-rc.2 及以下**(0.1.0-rc.7+) | ✅ 实测 | ✅ 实测 | ✅ 实测 |
+>
+> 同一份构建覆盖 0.1.0-rc.7 至 0.1.2 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
 
-- 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**(与 `npx @deepseek-ai/dsh@0.1.0-rc.7` 内置包一致);已在 **0.1.0-rc.8** 运行时实测通过(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用),在 **0.1.1-rc.2** 上复测通过(2026-08-27,Windows:`--dump-config` 组合层、路由注册、client bundle 均正常),并在 **0.1.2-rc.1** 上完成适配与实测(2026-09-05:0.1.2-rc.1 重写了 `dsh-settings` API,插件自 0.3.15 起改用 `SettingsProvider.installSection` 新接口,真实 profile 冒烟通过)。
-- **dsh-settings API 适配**:0.1.0-rc.x 的独立函数 `installSettingsSection(ctx, ...)` 在 0.1.2-rc.1 移除,改为 `ctx.settings` 服务实例上的 `installSection(...)` 方法。0.3.15+ 经 `ctx.inject(['settings'])` 等待服务再挂载;settings 服务缺席(测试环境/更老版本)时自动回落组合层配置,行为与旧版一致。**0.3.15+ 需要 dsh ≥0.1.2-rc.1;如需在 0.1.0-rc.x / 0.1.1-rc.x 上运行,请使用 0.3.14。**
+- 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**;已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)。
+- **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
+- **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
+- **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
 - **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON),成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。
 - 客户端与 Host 需同版本(SSE 协议是私有约定):升级插件后请重启 `dsh web` 并刷新浏览器页面。

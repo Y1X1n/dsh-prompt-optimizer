@@ -103,11 +103,19 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## Compatibility
 
-> **This version targets DeepSeek Harness `0.1.2-rc.1`** | backward compatible with `0.1.0-rc.7` and above | newer alpha builds are unverified.
-> This annotation is maintained in every Release note from v0.3.15 onward; earlier Release notes have been retroactively annotated.
+> **This version (v0.3.16) targets DeepSeek Harness**:
+>
+> | dsh version | Optimize route / model calls | Settings page (incl. GitHub link) | Composer button / result panel |
+> |---|---|---|---|
+> | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ verified | ✅ verified | ✅ verified |
+> | **0.1.1-rc.2 and below** (0.1.0-rc.7+) | ✅ verified | ✅ verified | ✅ verified |
+>
+> One build covers 0.1.0-rc.7 through 0.1.2; this annotation is maintained in every Release note from v0.3.15 onward, and earlier Release notes have been retroactively annotated.
 
-- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7** (matching the packages bundled with `npx @deepseek-ai/dsh@0.1.0-rc.7`); verified on the **0.1.0-rc.8** runtime (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), re-verified on **0.1.1-rc.2** (2026-08-27, Windows: `--dump-config` composition layer, route registration, client bundle all healthy), and adapted + verified on **0.1.2-rc.1** (2026-09-05: 0.1.2-rc.1 rewrote the `dsh-settings` API — plugin 0.3.15+ uses the new `SettingsProvider.installSection` interface; real-profile smoke test passed).
-- **dsh-settings API adaptation**: the standalone function `installSettingsSection(ctx, ...)` from 0.1.0-rc.x was removed in 0.1.2-rc.1, replaced by the `installSection(...)` method on the `ctx.settings` service instance. 0.3.15+ awaits the service via `ctx.inject(['settings'])` before mounting; when the settings service is absent (test environments / older versions) it falls back to the composition-layer config, matching the old behavior. **0.3.15+ requires dsh ≥0.1.2-rc.1; to run on 0.1.0-rc.x / 0.1.1-rc.x, use 0.3.14.**
+- Development baseline: `@deepseek-ai/*` **0.1.0-rc.7**; verified on **0.1.0-rc.8** (2026-08-20, Windows, real-profile install + Web routes / client bundle / session-history RPC / end-to-end LLM call), re-verified on **0.1.1-rc.2** (2026-08-27), and adapted + verified on **0.1.2-rc.1 / 0.1.2-alpha.5** (2026-09-05/06, real-profile end-to-end smoke tests: composition layer, route SSE, client bundle, composer button and result panel, settings card).
+- **dsh-settings API compatibility layer**: the 0.1.2 line rewrote the settings API (standalone `installSettingsSection` removed, replaced by the `installSection` method on the `ctx.settings` service instance). 0.3.16+ feature-detects at runtime: uses the new interface when present, otherwise an inline equivalent (register + watch + unload fallback); when the settings service is absent it falls back to the composition-layer config.
+- **Client slot props dual form**: since 0.1.2 the composer slots are session-scoped — components read session/draft state via standard hooks (`useInput`/`useSession`), and registration uses the official two-layer shape (register inside an inject callback on the derived context, with an `inject(sessionId)` hook). Components dispatch on the props shape (hooks on 0.1.2, direct snapshots on older hosts), so both hosts share one build.
+- **Client bundle registration id**: the loader id in `lib/client.js` must equal the plugin npm package name (the host's client-modules validates registration against it); the client inject list no longer names `dsh-client-runtime`, which 0.1.2 merged away.
 - Protocol contract: `/dsh-prompt-optimizer/optimize` returns 400/405/409/413 as plain JSON on pre-check failure and switches to an SSE stream on success (model errors arrive as `error` events); `/dsh-prompt-optimizer/test-model` **always returns HTTP 200** with an `ok` field in the body (a probe is application-level semantics, deliberately not mapped to transport status codes) — integrate against `ok`, not the status code.
 - The HTTP carrier service name has drifted between releases (`httpServer` in the npm 0.0.1-rc.x type packages, `webServer` in the 0.1.0-rc.x runtime): the plugin waits on both names via `ctx.inject` with no static hard dependency — if the name changes again, only this plugin's routes fail to register (with a log warning after 10s); the Harness startup is never dragged down.
 - Client and Host must be the same version (the SSE protocol is a private contract): after upgrading, restart `dsh web` and refresh the browser.

@@ -64,25 +64,37 @@ export function apply(ctx: ClientContext): void {
     getWatchdogMs: () => ((scope.getSnapshot().value?.timeoutSeconds ?? 120) + 5) * 1000,
   })
 
-  // 发送栏工具行右区:发送按钮旁的「优化」入口(带 ✨ 图标)。
-  ctx.slots.inject('conversation.input.right', () =>
-    ctx.slots.register(
-      { name: 'conversation.input.right', id: 'prompt-optimizer', order: 30 },
-      createOptimizeButton(controller),
-    ),
-  )
-
-  // 输入卡上方整行的结果面板(conversation.input.dock,与 TodoDock/QueueDock 同族)。
-  // 注意:不能用 conversation.composer.dock——它是环境读数槽位,且在 hero(新会话)
-  // 界面不渲染,会导致面板完全不出现。
-  ctx.slots.inject('conversation.input.dock', () =>
-    ctx.slots.register(
-      { name: 'conversation.input.dock', id: 'prompt-optimizer', order: 30 },
-      createResultDock(controller),
-    ),
-  )
+  // 发送栏按钮与结果面板。0.1.2 起 conversation.input.* 槽位是 session scope,
+  // 采用与官方 ui-model-selection 一致的双层形态 —— 注入回调内 scope 化注册,
+  // 并携带 0.1.2 渲染端使用的 inject(sessionId) 钩子;旧版(0.1.0-rc.x /
+  // 0.1.1-rc.x)忽略未知字段、注册时机仅推迟到服务就绪,行为不变。
+  ctx.inject(['slots', 'connection', 'remote', 'settingsScope'], (scopeCtx) => {
+    scopeCtx.slots.inject('conversation.input.right', () =>
+      scopeCtx.slots.register(
+        {
+          name: 'conversation.input.right',
+          id: 'prompt-optimizer',
+          order: 30,
+          inject: () => ({}),
+        },
+        createOptimizeButton(controller),
+      ),
+    )
+    scopeCtx.slots.inject('conversation.input.dock', () =>
+      scopeCtx.slots.register(
+        {
+          name: 'conversation.input.dock',
+          id: 'prompt-optimizer',
+          order: 30,
+          inject: () => ({}),
+        },
+        createResultDock(controller),
+      ),
+    )
+  })
 
   // 设置 → 插件配置:本插件的配置卡片(keyed 槽位,key = 设置命名空间)。
+  // settings.plugin.item 非 session scope,沿用声明式挂载。
   ctx.slots.inject('settings.plugin.item', () =>
     ctx.slots.register(
       { name: 'settings.plugin.item', key: 'prompt-optimizer' },
