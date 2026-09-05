@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+// 0.1.2-rc.1 起设置能力改为 SettingsProvider 实例方法(installSection);
+// 这里只导类型,运行时经 ctx.settings 注入拿实例(服务缺席回落组合层配置)。
+import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTokens, parseOptimizerOutput, type ConversationTurn, type OptimizerMode, type OutputLanguage } from './prompt.js'
@@ -50,7 +52,8 @@ export const Config: Schema<Config> = Schema.object({
   includeContext: Schema.boolean().default(true),
 })
 
-const NS = settingsNamespace('prompt-optimizer')
+// 0.1.2-rc.1 起 ns 直接传字符串,由 SettingsNamespaceInput 做小写-连字符校验。
+const NS = 'prompt-optimizer' as const
 const ROUTE_PATH = '/dsh-prompt-optimizer/optimize'
 const TEST_ROUTE_PATH = '/dsh-prompt-optimizer/test-model'
 const MAX_BODY_BYTES = 256 * 1024
@@ -307,12 +310,19 @@ export function apply(ctx: Context, config: Config) {
   }
 
   // 设置页命名空间:组合层配置作为 base,用户在 设置→插件配置 中的修改实时生效。
+  // 0.1.2-rc.1 API:installSection 挂在 SettingsProvider 实例上,经 ctx.inject
+  // 等待 settings 服务;服务缺席(测试环境/老版本)时跳过,current 保持组合层
+  // 配置 —— 与旧版 installSettingsSection 内部的回落语义一致。
   let current = (): Config => config
-  installSettingsSection(ctx, NS, Config, config, {
-    setSource: (source) => {
-      current = source
-    },
-    onChange: () => {},
+  ctx.inject(['settings'], (sctx) => {
+    const settings = (sctx as unknown as { settings?: SettingsProvider }).settings
+    if (!settings) return
+    settings.installSection(ctx, NS, Config, config, {
+      setSource: (source) => {
+        current = source
+      },
+      onChange: () => {},
+    })
   })
   // 启动即对初始配置做一次非法枚举告警;请求期配置可能被实时改写,handler 内还会复查。
   warnUnknownEnumConfig(config)

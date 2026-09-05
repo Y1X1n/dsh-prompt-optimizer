@@ -1,6 +1,6 @@
 {
   "name": "@y1x1n/dsh-prompt-optimizer",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "DeepSeek Harness 插件:在发送栏旁一键分析并优化提示词(复用当前会话模型)",
   "license": "MIT",
   "type": "module",
@@ -58,13 +58,13 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "^0.1.0-rc.7",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.2-rc.1",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.1",
     "esbuild": "^0.24.0",
