@@ -18,7 +18,8 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 
 - [Features](#features)
 - [Installation](#installation)
-  - [From a Release (recommended, no build)](#from-a-release-recommended-no-build)
+  - [From npm (recommended, simplest)](#from-npm-recommended-simplest)
+  - [From a Release (tarball, no build)](#from-a-release-tarball-no-build)
   - [From source (tarball)](#from-source-tarball)
   - [From GitHub](#from-github)
   - [Uninstall](#uninstall)
@@ -65,14 +66,19 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 
 Prerequisite: the `dsh` CLI (an environment where `npx @deepseek-ai/dsh web` works).
 
-### From a Release (recommended, no build)
+### From npm (recommended, simplest)
 
 ```sh
-# Download y1x1n-dsh-prompt-optimizer.tgz (always points to the latest release), then install the local file
-dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
+dsh plugin --profile web add @y1x1n/dsh-prompt-optimizer
 ```
 
-Download: https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
+### From a Release (tarball, no build)
+
+Download `y1x1n-dsh-prompt-optimizer-<version>.tgz` from the [Releases page](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest), then install the local file:
+
+```sh
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<version>.tgz
+```
 
 ### From source (tarball)
 
@@ -133,7 +139,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## Verification status
 
-Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, Windows — see Compatibility); macOS automated verification passed (2026-09-02, macOS 26.5, all 62 tests green, and CI now permanently runs the full suite on macos-latest); v0.3.9–0.3.11 were additionally verified end-to-end on a **third-party free model** (openrouter `minimax/minimax-m3:free`, which emits no marker format): both strategies, element-by-element fidelity, `[TODO]` markers, memory chain, and cancel-keeps-content all behave as designed — and this live testing is what surfaced the fast-mode false-positive fixed in v0.3.10/11.
+Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, Windows — see Compatibility); macOS automated verification passed (2026-09-02, macOS 26.5, all 62 tests green, and CI now permanently runs the full suite on macos-latest); **v0.3.16 completed end-to-end verification on the 0.1.2 line** (dsh 0.1.2-rc.1 / 0.1.2-alpha.5: composer button, result panel, settings card, optimize route and SSE); v0.3.9–0.3.11 were additionally verified end-to-end on a **third-party free model** (openrouter `minimax/minimax-m3:free`, which emits no marker format): both strategies, element-by-element fidelity, `[TODO]` markers, memory chain, and cancel-keeps-content all behave as designed — and this live testing is what surfaced the fast-mode false-positive fixed in v0.3.10/11.
 
 - Composition-layer load: `--dump-config` shows the `# == dsh-prompt-optimizer` layer;
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
@@ -197,7 +203,8 @@ dsh-prompt-optimizer/
 │       ├── OptimizeButton.tsx   # composer button
 │       ├── ResultDock.tsx       # result panel above the input card (live streaming + undo)
 │       ├── SettingsCard.tsx     # collapsible settings card
-│       └── SparkleIcon.tsx      # hand-drawn ✨ icon
+│       ├── SparkleIcon.tsx      # hand-drawn ✨ icon
+│       └── GitHubIcon.tsx       # GitHub icon (repo link in the settings card header)
 ├── scripts/build.mjs     # esbuild: Host ESM + Client lazy-CJS factory + two test artifacts
 ├── scripts/sync-types.mjs
 ├── scripts/prompt-probe.mjs  # prompt evidence probe: fires real optimize requests at a running instance (PROBE_ROUTE=provider/model to pin a route)

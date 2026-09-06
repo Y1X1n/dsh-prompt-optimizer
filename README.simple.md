@@ -45,20 +45,14 @@
 
 ### 第 1 步:下载插件包
 
-打开 [Releases 页面](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest),下载 `y1x1n-dsh-prompt-optimizer.tgz`。
-
-> Windows 用浏览器下载即可;习惯命令行的话:
->
-> ```sh
-> curl -LO https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
-> ```
+打开 [Releases 页面](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest),下载文件名形如 `y1x1n-dsh-prompt-optimizer-<版本号>.tgz` 的插件包。
 
 ### 第 2 步:安装
 
-打开终端,进到下载文件所在的目录,运行:
+打开终端,进到下载文件所在的目录,运行(把 `<版本号>` 换成你下载的文件实际名字):
 
 ```sh
-dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<版本号>.tgz
 ```
 
 ### 第 3 步:重启

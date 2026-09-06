@@ -18,7 +18,8 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 
 - [功能](#功能)
 - [安装](#安装)
-  - [从 Release 安装(推荐,免构建)](#从-release-安装推荐免构建)
+  - [从 npm 安装(推荐,最简)](#从-npm-安装推荐最简)
+  - [从 Release 安装(tarball,免构建)](#从-release-安装tarball免构建)
   - [本地源码安装(tarball)](#本地源码安装tarball)
   - [从 GitHub 安装](#从-github-安装)
   - [卸载](#卸载)
@@ -65,14 +66,19 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 
 前提:已安装 `dsh` CLI(`npx @deepseek-ai/dsh web` 可用的环境)。
 
-### 从 Release 安装(推荐,免构建)
+### 从 npm 安装(推荐,最简)
 
 ```sh
-# 下载 y1x1n-dsh-prompt-optimizer.tgz(始终指向最新版),再安装本地文件
-dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer.tgz
+dsh plugin --profile web add @y1x1n/dsh-prompt-optimizer
 ```
 
-下载地址:https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest/download/y1x1n-dsh-prompt-optimizer.tgz
+### 从 Release 安装(tarball,免构建)
+
+到 [Releases 页面](https://github.com/Y1X1n/dsh-prompt-optimizer/releases/latest) 下载 `y1x1n-dsh-prompt-optimizer-<版本号>.tgz`,再安装本地文件:
+
+```sh
+dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<版本号>.tgz
+```
 
 ### 本地源码安装(tarball)
 
@@ -133,7 +139,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 验证状态
 
-已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
+已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
 
 - 组合层加载:`--dump-config` 出现 `# == dsh-prompt-optimizer` 层;
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
@@ -199,7 +205,8 @@ dsh-prompt-optimizer/
 │       ├── OptimizeButton.tsx   # 发送栏按钮
 │       ├── ResultDock.tsx       # 输入卡上方的结果面板(流式实况 + 撤回)
 │       ├── SettingsCard.tsx     # 设置页折叠卡片
-│       └── SparkleIcon.tsx      # 手绘 ✨ 图标
+│       ├── SparkleIcon.tsx      # 手绘 ✨ 图标
+│       └── GitHubIcon.tsx       # GitHub 图标(设置卡标题栏仓库入口)
 ├── scripts/build.mjs     # esbuild:Host ESM + Client lazy-CJS factory + 两个测试用产物
 ├── scripts/sync-types.mjs
 ├── scripts/prompt-probe.mjs  # 提示词实证探针:对运行实例发真实优化请求(PROBE_ROUTE=provider/model 可指定路由)
