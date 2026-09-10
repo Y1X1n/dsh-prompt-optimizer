@@ -230,6 +230,31 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 7 max-tokens 截断标记')
 }
 
+// 7b. 推理模型 <think> 块:思考内容不进 SSE 增量,done 取思考后真实标记段
+{
+  const { handler } = await setup({
+    llmOverrides: {
+      async *stream() {
+        yield { type: 'text-delta', index: 0, text: '<think>\n推理:应输出 <<<OPTIMIZED>>> ... <<<END>>>' }
+        yield { type: 'text-delta', index: 0, text: '再想想 <<<OPTIMIZED>>> 碎片 <<<END>>>' }
+        yield { type: 'text-delta', index: 0, text: '</think>' }
+        yield { type: 'text-delta', index: 0, text: '<<<ANALYSIS>>>\n简要分析\n' }
+        yield { type: 'text-delta', index: 0, text: '<<<OPTIMIZED>>>\n真正的优化结果\n<<<END>>>\n' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+  })
+  const res = await call(handler, { text: 'x' })
+  const done = doneOf(res)
+  assert.doesNotMatch(res.body, /推理:应输出/, '思考内容不得进入 SSE 增量')
+  assert.doesNotMatch(res.body, /再想想/, '思考里的标记复述不得进入增量')
+  assert.equal(sseEvents(res).filter((e) => e.type === 'delta' && /思考|碎片/.test(e.text)).length, 0, '增量里无思考片段')
+  assert.equal(done.optimized, '真正的优化结果', 'done 取思考后的真实标记段')
+  assert.equal(done.analysis, '简要分析')
+  assert.equal(done.wellFormed, true)
+  console.log('✓ 7b 推理思考块剥离')
+}
+
 // 8. 超时:模型挂死时中止流并推送 error 事件(慢用例,约 10s)
 {
   const { handler } = await setup({

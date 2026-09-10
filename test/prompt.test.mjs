@@ -2,7 +2,7 @@
  * prompt.ts 标记解析的单元测试。运行:先 `npm run build`,再 `node test/prompt.test.mjs`。
  */
 import assert from 'node:assert/strict'
-import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPartialBuffer, estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput } from '../lib/prompt.js'
+import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPartialBuffer, createThinkFilter, estimateTokens, parseOptimizerOutput, parsePartialOptimizerOutput, stripThinkBlocks } from '../lib/prompt.js'
 
 // 1. 标准标记:正常分段
 {
@@ -219,6 +219,71 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   assert.equal(parsePartialOptimizerOutput(again.compacted).optimized, '优化输出到一半')
   assert.equal(again.analysis, '')
   console.log('✓ p13 流式缓冲压缩')
+}
+
+// p14 思考块剥离 + 多组标记取最后一组(生产实测:推理模型把 <think> 当正文输出,
+// 且思考里复述 <<<OPTIMIZED>>>…<<<END>>> 字样,旧解析取第一组只捞到碎片/「...」)
+{
+  const raw = [
+    '<think>',
+    '用户想要一份周报。我应该输出 <<<OPTIMIZED>>> ... <<<END>>> 这样的标记。',
+    '再想想,片段 <<<OPTIMIZED>>> 和 <<<END>>> 之间只有省略号。',
+    '</think>',
+    '<<<OPTIMIZED>>>',
+    '请写一份周报,总结本周的项目进展情况。',
+    '<<<END>>>',
+  ].join('\n')
+  const out = parseOptimizerOutput(raw, 'fast')
+  assert.equal(out.optimized, '请写一份周报,总结本周的项目进展情况。')
+  assert.equal(out.wellFormed, true)
+  // 全模式(带 ANALYSIS)同样正确:ANALYSIS 取 OPTIMIZED 之前的最后一个
+  const full = parseOptimizerOutput('<think>思考 <<<ANALYSIS>>> 假分析 <<<OPTIMIZED>>> 假结果 <<<END>>></think>\n<<<ANALYSIS>>>\n真分析\n<<<OPTIMIZED>>>\n真结果\n<<<END>>>', 'full')
+  assert.equal(full.analysis, '真分析')
+  assert.equal(full.optimized, '真结果')
+  assert.equal(full.wellFormed, true)
+  // 纯剥离工具:完整块移除、未闭合块保留
+  assert.equal(stripThinkBlocks('a<think>x</think>b<think>y</think>c'), 'abc')
+  assert.equal(stripThinkBlocks('a<think>未闭合'), 'a<think>未闭合')
+  console.log('✓ p14 思考块剥离与多组标记取最后')
+}
+
+// p15 流式部分解析:思考中不显示,闭合后解析真实段落
+{
+  const before = parsePartialOptimizerOutput('<think>\n推理中,还没想到 <<<OPTIMIZED>>> 标记')
+  assert.deepEqual(before, { analysis: '', optimized: '' }, '思考中不产出预览')
+  const during = parsePartialOptimizerOutput('<think>思考</think>\n<<<OPTIMIZED>>>\n写到一半')
+  assert.equal(during.optimized, '写到一半')
+  assert.equal(during.analysis, '')
+  console.log('✓ p15 流式思考中抑制与闭合后解析')
+}
+
+// p16 流式思考过滤器:标记被拆在相邻 chunk 也能剥,正常内容不受影响
+{
+  const f = createThinkFilter()
+  let out = ''
+  out += f.push('你好<th')          // '<th' 可能是标记开头,扣留
+  out += f.push('ink>\n思考内容')   // 判定进入思考,整段丢弃
+  out += f.push('</th')             // '</th' 可能是闭合标记前缀,扣留
+  out += f.push('ink>\n<<<OPTIMIZED>>>\n')  // 闭合,后续正常下发
+  out += f.push('真结果')
+  out += f.flush()
+  assert.equal(out, '你好\n<<<OPTIMIZED>>>\n真结果', '思考内容被剥除,其余完整保留')
+  // 纯正常输出(无思考)逐字不受损
+  const g = createThinkFilter()
+  let plain = ''
+  for (const ch of '普通输出<<<OPTIMIZED>>>内容') plain += g.push(ch)
+  plain += g.flush()
+  assert.equal(plain, '普通输出<<<OPTIMIZED>>>内容', '无思考时内容无损')
+  console.log('✓ p16 流式思考过滤器')
+}
+
+// p17 缓冲压缩在思考垃圾存在时锚定最后一组标记
+{
+  const raw = '<think>思考 <<<OPTIMIZED>>> 碎片 <<<END>>></think>\n<<<OPTIMIZED>>>\n优化输出到一半'
+  const comp = compactPartialBuffer(raw)
+  assert.equal(parsePartialOptimizerOutput(comp.compacted).optimized, '优化输出到一半')
+  assert.equal(comp.analysis, '')
+  console.log('✓ p17 压缩锚定最后一组标记')
 }
 
 console.log('\nprompt: all passed')

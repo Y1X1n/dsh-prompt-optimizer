@@ -5,7 +5,7 @@ import Schema from '@deepseek-ai/schemastery'
 import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { buildSystemPrompt, buildUserPayload, capConversationContext, estimateTokens, parseOptimizerOutput, type ConversationTurn, type OptimizerMode, type OutputLanguage } from './prompt.js'
+import { buildSystemPrompt, buildUserPayload, capConversationContext, createThinkFilter, estimateTokens, parseOptimizerOutput, type ConversationTurn, type OptimizerMode, type OutputLanguage } from './prompt.js'
 
 export const name = 'dsh-prompt-optimizer'
 // 硬依赖只有 llm。HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫
@@ -488,10 +488,16 @@ export function apply(ctx: Context, config: Config) {
               if (effort) {
                 options.reasoningEffort = effort as GenerateOptions['reasoningEffort']
               }
+              // 思考块过滤:推理模型把 <think>…</think> 当正文输出(内含复述的
+              // 标记字样),剥掉后客户端的实时预览与最终解析都只见到真实内容。
+              const thinkFilter = createThinkFilter()
               raw = await collectText(ctx.llm.stream(options), (delta) => {
                 sentAny = true
-                send({ type: 'delta', text: delta })
+                const clean = thinkFilter.push(delta)
+                if (clean) send({ type: 'delta', text: clean })
               })
+              const thinkTail = thinkFilter.flush()
+              if (thinkTail) send({ type: 'delta', text: thinkTail })
               lastError = null
               break
             } catch (error) {

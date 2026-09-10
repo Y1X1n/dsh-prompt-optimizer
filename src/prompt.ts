@@ -254,17 +254,104 @@ function findMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', fromIn
   return match ? { index: match.index, length: match[0].length } : null
 }
 
+/** 从前往后找第 beforeIndex 个之前的最后一个标记(推理模型会在思考里复述标记,必须取最后一组)。 */
+function findLastMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', beforeIndex = text.length): { index: number; length: number } | null {
+  const re = new RegExp(`<<<\\s*${word}\\s*>>>`, 'g')
+  let last: { index: number; length: number } | null = null
+  for (const match of text.matchAll(re)) {
+    if (match.index >= beforeIndex) break
+    last = { index: match.index, length: match[0].length }
+  }
+  return last
+}
+
+const THINK_OPEN = '<think>'
+const THINK_CLOSE = '</think>'
+
+/**
+ * 剥离已闭合的 `<think>…</think>` 思考块(推理模型会把推理过程当正文输出,
+ * 且思考里常复述 `<<<OPTIMIZED>>>…<<<END>>>` 标记字样,干扰标记解析)。
+ */
+export function stripThinkBlocks(text: string): string {
+  let out = ''
+  let rest = text
+  for (;;) {
+    const open = rest.indexOf(THINK_OPEN)
+    const close = open === -1 ? -1 : rest.indexOf(THINK_CLOSE, open + THINK_OPEN.length)
+    if (open === -1 || close === -1) return out + rest
+    out += rest.slice(0, open)
+    rest = rest.slice(close + THINK_CLOSE.length)
+  }
+}
+
+/**
+ * 生成一个可跨 chunk 剥离思考块的流式过滤器:push 进原始增量,返回可安全
+ * 下发的干净文本。标记可能被拆在相邻 chunk 里,因此统一扣留末尾可能构成
+ * `<think>` / `</think>` 前缀的部分,直到能判定为止;思考中的内容整段丢弃。
+ */
+export function createThinkFilter(): { push(chunk: string): string; flush(): string } {
+  let buf = ''
+  let inThink = false
+  const splitSafeTail = (tagLen: number): [string, string] => {
+    const lastLt = buf.lastIndexOf('<')
+    const keepFrom = lastLt !== -1 && buf.length - lastLt <= tagLen - 1 ? lastLt : buf.length
+    return [buf.slice(0, keepFrom), buf.slice(keepFrom)]
+  }
+  const push = (chunk: string): string => {
+    buf += chunk
+    let out = ''
+    for (;;) {
+      if (inThink) {
+        const close = buf.indexOf(THINK_CLOSE)
+        if (close === -1) {
+          const [emit, keep] = splitSafeTail(THINK_CLOSE.length)
+          void emit
+          buf = keep
+          return out
+        }
+        buf = buf.slice(close + THINK_CLOSE.length)
+        inThink = false
+        continue
+      }
+      const open = buf.indexOf(THINK_OPEN)
+      if (open === -1) {
+        const [emit, keep] = splitSafeTail(THINK_OPEN.length)
+        out += emit
+        buf = keep
+        return out
+      }
+      out += buf.slice(0, open)
+      buf = buf.slice(open + THINK_OPEN.length)
+      inThink = true
+    }
+  }
+  const flush = (): string => {
+    if (inThink) {
+      buf = ''
+      return ''
+    }
+    const rest = buf
+    buf = ''
+    return rest
+  }
+  return { push, flush }
+}
+
 /**
  * 解析模型输出中的标记段落。模型不遵守格式时降级:
  * 找到 OPTIMIZED 则其余归 analysis;两个标记都没有则全文作为 optimized。
  * fast 模式判 wellFormed 恒为 true:它只要求 OPTIMIZED 单标记(现有判定却要求
  * 双标记,连完全遵守 fast 格式的输出都会误报),而「无标记 = 整段即结果」时
  * 「混入多余文字」既无法检测也无需警告——警示横幅与记忆链门槛在 fast 下全是噪声。
+ *
+ * 解析前先剥离 `<think>` 思考块;推理模型会在思考里复述标记字样(实测:
+ * `<<<OPTIMIZED>>>…<<<END>>>` 出现在思考里),因此多组标记时取最后一组 ——
+ * 否则会解析到思考里的碎片(实测曾把 1 个字/「...」当优化结果)。
  */
 export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'): OptimizerOutput {
-  const text = raw.trim()
-  const a = findMarker(text, 'ANALYSIS')
-  const o = findMarker(text, 'OPTIMIZED')
+  const text = stripThinkBlocks(raw).trim()
+  const o = findLastMarker(text, 'OPTIMIZED')
+  const a = o ? findLastMarker(text, 'ANALYSIS', o.index) : findLastMarker(text, 'ANALYSIS')
   const wellFormed = mode === 'fast' ? true : Boolean(a && o)
 
   if (!a && !o) {
@@ -291,18 +378,23 @@ export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'):
 /**
  * 流式进行中的容错解析:只返回标记已确认的段落,不做整文兜底
  * (兜底会把含标记的原文误当优化结果显示出来)。两个段落都可能随 delta 增长。
+ * 思考块同样剥离;流式里尚未闭合的 `<think>` 视为思考中,该段暂不显示。
  */
 export function parsePartialOptimizerOutput(raw: string): { analysis: string; optimized: string } {
-  const a = findMarker(raw, 'ANALYSIS')
-  const o = findMarker(raw, 'OPTIMIZED')
+  let text = stripThinkBlocks(raw)
+  const lastOpen = text.lastIndexOf(THINK_OPEN)
+  const lastClose = text.lastIndexOf(THINK_CLOSE)
+  if (lastOpen > lastClose) text = text.slice(0, lastOpen)
+  const o = findLastMarker(text, 'OPTIMIZED')
+  const a = o ? findLastMarker(text, 'ANALYSIS', o.index) : findLastMarker(text, 'ANALYSIS')
   let analysis = ''
   let optimized = ''
   if (a && (!o || a.index < o.index)) {
-    analysis = raw.slice(a.index + a.length, o ? o.index : raw.length).trim()
+    analysis = text.slice(a.index + a.length, o ? o.index : text.length).trim()
   }
   if (o) {
-    const e = findMarker(raw, 'END', o.index + o.length)
-    optimized = raw.slice(o.index + o.length, e ? e.index : raw.length).trim()
+    const e = findMarker(text, 'END', o.index + o.length)
+    optimized = text.slice(o.index + o.length, e ? e.index : text.length).trim()
   }
   return { analysis, optimized }
 }
@@ -321,9 +413,10 @@ export interface PartialCompaction {
  * 长输出无界增长(每次合帧的正则扫描也只在尾部窗口进行)。
  */
 export function compactPartialBuffer(raw: string): PartialCompaction {
-  const o = findMarker(raw, 'OPTIMIZED')
+  // 取最后一个 OPTIMIZED:思考块里复述的标记不能当锚点(锚错会把推理碎片定格成分析段)。
+  const o = findLastMarker(raw, 'OPTIMIZED')
   if (!o) return { compacted: null, analysis: '' }
-  const a = findMarker(raw, 'ANALYSIS')
+  const a = findLastMarker(raw, 'ANALYSIS', o.index)
   const analysis = a && a.index < o.index ? raw.slice(a.index + a.length, o.index).trim() : ''
   return { compacted: `${MARKERS.optimized}\n${raw.slice(o.index + o.length)}`, analysis }
 }
