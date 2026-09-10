@@ -27,8 +27,9 @@ const buttonStyle = {
   color: 'var(--dsw-alias-label-primary, inherit)',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
-  // U4:预留最宽文案(「优化中…」/「Optimizing…」)的宽度,状态切换不引起工具栏抖动。
-  minWidth: 92,
+  // 宽度贴住内容,不预留「优化中…」的空位(用户反馈空闲态「优化」右侧空白);
+  // 加载态文案不变、仅图标旋转,宽度恒定,工具行不抖动(U4 原目标改由
+  // 恒定文案达成,minWidth 随之移除)。
   // 底色与 hover 态走注入样式表的 .dsh-po-opt 规则(inline 会盖过 :hover)。
 } as const
 
@@ -55,11 +56,14 @@ export function createOptimizeButton(controller: OptimizerController) {
           type="button"
           style={{ ...buttonStyle, ...(empty || loading ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
           disabled={empty || loading}
-          title={empty ? t('button.titleEmpty') : t('button.title')}
+          title={loading ? t('button.optimizing') : empty ? t('button.titleEmpty') : t('button.title')}
           onClick={() => void controller.optimize(draft, p.sessionId)}
         >
           <SparkleIcon spinning={loading} />
-          {loading ? t('button.optimizing') : t('button.optimize')}
+          {/* 文案恒为「优化」:宽度贴住内容,不再预留「优化中…」的空位(用户反馈
+             空闲态右侧空白)。进行中由旋转图标 + title + 面板状态条表达,
+             按钮宽度恒定,工具行不抖动。 */}
+          {t('button.optimize')}
         </button>
       </span>
     )
