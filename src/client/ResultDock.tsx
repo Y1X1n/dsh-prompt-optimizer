@@ -34,12 +34,14 @@ async function copyText(text: string): Promise<boolean> {
 const styles = {
   panel: {
     marginBottom: 6,
-    borderRadius: 10,
+    borderRadius: 12,
     border: '1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.3))',
-    background: 'var(--dsw-alias-bg-layer-2, #202226)',
+    background: 'var(--dsw-alias-bg-layer-2, #fff)',
     color: 'var(--dsw-alias-label-primary, inherit)',
-    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-    padding: '10px 12px',
+    // 阴影从 0.12 降到与官方输入卡同档的极淡弥散(0.03~0.05):
+    // 之前的重投影在白底上晕出一圈灰,是面板「显灰显大」的另一来源。
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 14px rgba(0, 0, 0, 0.05)',
+    padding: '8px 10px',
     fontSize: 12.5,
     lineHeight: 1.5,
     fontFamily: 'var(--dsw-font-family, inherit)',
@@ -64,12 +66,14 @@ const styles = {
   // U5:分析与优化各自独立滚动区(原先单容器 maxHeight 嵌套出现双滚动条),
   // 长内容不再互相挤压;外层 body 不限高,滚动归属到各段内部。
   body: { paddingRight: 4 } as const,
-  analysisBody: { maxHeight: '16vh', overflowY: 'auto', marginTop: 2 } as const,
+  analysisBody: { maxHeight: '14vh', overflowY: 'auto', marginTop: 2 } as const,
   optimizedBox: {
-    background: 'var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.08))',
-    borderRadius: 6,
-    padding: '6px 8px',
-    maxHeight: '26vh',
+    // 层面令牌在浅色主题下是纯白,填充不可见,用细描边给出容器感(不引入灰底)。
+    background: 'var(--dsw-alias-bg-layer-3, transparent)',
+    border: '1px solid var(--dsw-alias-border-l3, rgba(128,128,128,0.2))',
+    borderRadius: 8,
+    padding: '5px 8px',
+    maxHeight: '22vh',
     overflowY: 'auto',
     marginTop: 2,
   } as const,
@@ -81,7 +85,7 @@ const styles = {
     fontSize: 11,
     fontWeight: 600,
     color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-    margin: '6px 0 2px',
+    margin: '5px 0 2px',
     padding: 0,
     border: 'none',
     background: 'none',
@@ -91,15 +95,17 @@ const styles = {
   } as const,
   chevron: { fontSize: 9, transition: 'transform 0.15s ease' } as const,
   pre: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' } as const,
-  actions: { display: 'flex', gap: 8, marginTop: 8 } as const,
+  actions: { display: 'flex', gap: 8, marginTop: 6 } as const,
   actionBtn: {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '4px 12px',
+    padding: '3px 10px',
     fontSize: 12,
     borderRadius: 6,
     border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4))',
-    background: 'var(--dsw-alias-button-tool-bar-fill, transparent)',
+    // 幽灵按钮:button-tool-bar-fill 在当前主题是 50% 灰(#54555780),整排灰块
+    // 是面板显灰的主因,改为透明底 + 细描边,与输入卡的工具按钮同语言。
+    background: 'transparent',
     color: 'var(--dsw-alias-label-primary, inherit)',
     cursor: 'pointer',
   } as const,
