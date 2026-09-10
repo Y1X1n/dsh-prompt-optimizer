@@ -10,6 +10,7 @@ import { createResultDock } from './ResultDock.js'
 import { createSettingsCard, type OptimizerSettingsValue } from './SettingsCard.js'
 import { createOptimizerController } from './controller.js'
 import { installLocaleFace, type LocaleFace } from './i18n.js'
+import type { ModelDirectoriesLike } from './host-faces.js'
 // connection 的客户端 Context 合并发布版不带,这里按实际形状补齐。
 // settingsScope 的合并不能在这里重复声明:0.1.2 起改由
 // @deepseek-ai/dsh-client-ui-settings/client 自行声明(SettingsScopeBinder),
@@ -52,6 +53,14 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['locale'], (lctx) => {
     installLocaleFace((lctx as unknown as { locale?: LocaleFace }).locale ?? null)
   })
+  // 可选消费会话模型目录服务(dsh-client-ui-model-selection):「跟随会话」用它读取
+  // 与 /model 弹窗共用的目录。**独立 inject**:不能并进主 inject,否则旧版宿主
+  // (无该服务)会让整个客户端永远等不到就绪;缺席时保持 undefined,走 Host 回退。
+  // 闭包捕获 + 点击时惰性读取:优化点击远晚于服务到达,无需阻塞任何注册。
+  let modelDirectories: ModelDirectoriesLike | undefined
+  ctx.inject(['modelDirectories'], (mctx) => {
+    modelDirectories = (mctx as unknown as { modelDirectories?: ModelDirectoriesLike }).modelDirectories
+  })
 
   const scope = ctx.settingsScope.bind<OptimizerSettingsValue>({ namespace: 'prompt-optimizer' })
   const controller = createOptimizerController(ctx, {
@@ -63,6 +72,8 @@ export function apply(ctx: ClientContext): void {
     isFastMode: () => scope.getSnapshot().value?.mode === 'fast',
     // R21:看门狗 = 设置超时秒数 + 5s 余量(正常时 Host 的超时错误先到达,文案更友好)。
     getWatchdogMs: () => ((scope.getSnapshot().value?.timeoutSeconds ?? 120) + 5) * 1000,
+    // 「跟随会话」的模型来源(见上);点击时读取,服务缺席走 Host 回退。
+    getSessionModelDirectories: () => modelDirectories,
   })
 
   // 发送栏按钮与结果面板。0.1.2 起 conversation.input.* 槽位是 session scope,

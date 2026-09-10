@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // 0.1.2 起 SettingsScope 由 dsh-client-ui-settings/client 提供(dsh-client-runtime 已并包移除)。
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { OptimizerModelGroup } from './host-faces.js'
-import { legacyQueryFace } from './host-faces.js'
+import type { OptimizerModelFailure, OptimizerModelGroup } from './host-faces.js'
+import { sessionCatalog } from './host-faces.js'
 import { useT } from './i18n.js'
 import { GitHubIcon } from './GitHubIcon.js'
 
@@ -230,21 +230,30 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       }
     }
 
-    // 模型下拉需要目录:挂载时拉取一次,失败或后续新增 provider 时可手动刷新。
+    // 模型下拉需要目录:挂载时经连接层 RPC(session/modelCatalog)拉取一次,
+    // 失败或后续新增 provider 时可手动刷新。个别提供方失败不影响其余分组。
     const [groups, setGroups] = useState<OptimizerModelGroup[] | null>(null)
     const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
+    const [catalogHint, setCatalogHint] = useState<string | null>(null)
     const loadCatalog = async () => {
       setCatalogState('loading')
+      setCatalogHint(null)
       try {
-        // connection.api 在上游发布版中从未存在(见 host-faces.ts),缺席时下拉只保留「跟随会话」。
-        const resp = await legacyQueryFace(ctx.connection)?.llm?.models({})
-        if (resp?.result.ok) {
-          setGroups(resp.result.value.groups)
+        const result = await sessionCatalog(ctx.connection)
+        if (result.ok) {
+          setGroups(result.value.groups)
           setCatalogState('ready')
+          const failures = result.value.failures ?? []
+          if (failures.length) {
+            setCatalogHint(failures.map((f: OptimizerModelFailure) => `${f.name || f.id}: ${f.message}`).join('; '))
+          }
         } else {
+          const message = typeof result.error === 'string' ? result.error : result.error?.message
+          setCatalogHint(message ?? null)
           setCatalogState('error')
         }
-      } catch {
+      } catch (cause) {
+        setCatalogHint(cause instanceof Error ? cause.message : String(cause))
         setCatalogState('error')
       }
     }
@@ -344,6 +353,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           {groups === null ? (
             <span style={styles.hint}>
               {catalogState === 'error' ? t('settings.catalog.error') : t('settings.catalog.loading')}
+              {catalogHint ? `(${catalogHint})` : ''}
             </span>
           ) : (
             <select

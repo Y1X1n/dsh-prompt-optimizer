@@ -10,39 +10,53 @@ import { createOptimizerController, extractContextTurns, shouldAutoClose, splitC
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const enc = new TextEncoder()
 
-/** 构造最小可用的 ClientContext mock;sessions.models / sessions.history 调用次数可通过 returned.stats 观察。 */
-function makeCtx({ historyImpl } = {}) {
-  const stats = { modelsCalls: 0, historyCalls: 0 }
-  const ctx = {
-    connection: {
-      api: {
-        sessions: {
-          models: async () => {
-            stats.modelsCalls += 1
-            return { result: { ok: true, value: { current: { provider: 'sess-p', model: 'sess-m' } } } }
-          },
-          history: async () => {
-            stats.historyCalls += 1
-            if (historyImpl) return historyImpl()
-            return {
-              result: {
-                ok: true,
-                value: {
-                  hasMore: false,
-                  events: [
-                    { event: { type: 'user/message', seq: 0, time: 1, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '帮我写个周报' }] } } },
-                    { event: { type: 'assistant/message', seq: 1, time: 2, data: { message: { role: 'assistant', content: [{ type: 'text', text: '好的,本周做了哪些事?' }] } } } },
-                    // 插件注入的 user 角色消息应被排除
-                    { event: { type: 'user/message', seq: 2, time: 3, data: { role: 'user', source: { kind: 'plugin', plugin: 'x' }, content: [{ type: 'text', text: '注入内容' }] } } },
-                    // 空壳 assistant 消息(仅承载 usage)应被跳过
-                    { event: { type: 'assistant/message', seq: 3, time: 4, data: { message: { role: 'assistant', content: [] } } } },
-                    // 工具事件与上下文无关
-                    { event: { type: 'tool/result', seq: 4, time: 5, data: { message: { role: 'user', content: [{ type: 'text', text: '工具结果' }] } } } },
-                  ],
-                },
-              },
-            }
-          },
+/**
+ * 构造最小可用的 ClientContext mock。
+ * - modelDirectories:官方会话模型目录服务(controller 读取 current 作为会话模型),
+ *   `noModelDirectories: true` 时整体缺席,验证回退路径。
+ * - connection.api.sessions.history:旧版查询面(上游从未提供,插件按可选面调用),
+ *   调用次数可通过 returned.stats 观察。
+ */
+function makeCtx({ historyImpl, noModelDirectories } = {}) {
+  const stats = { modelDirCalls: 0, historyCalls: 0 }
+  const ctx = {}
+  if (!noModelDirectories) {
+    ctx.modelDirectories = {
+      directoryFor: () => ({
+        load: async () => {
+          stats.modelDirCalls += 1
+          return {
+            current: { provider: 'sess-p', model: 'sess-m' },
+            groups: [],
+            status: 'ready',
+            error: null,
+          }
+        },
+      }),
+    }
+  }
+  ctx.connection = {
+    api: {
+      sessions: {
+        history: async () => {
+          stats.historyCalls += 1
+          if (historyImpl) return historyImpl()
+          return {
+            ok: true,
+            value: {
+              hasMore: false,
+              events: [
+                { event: { type: 'user/message', seq: 0, time: 1, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '帮我写个周报' }] } } },
+                { event: { type: 'assistant/message', seq: 1, time: 2, data: { message: { role: 'assistant', content: [{ type: 'text', text: '好的,本周做了哪些事?' }] } } } },
+                // 插件注入的 user 角色消息应被排除
+                { event: { type: 'user/message', seq: 2, time: 3, data: { role: 'user', source: { kind: 'plugin', plugin: 'x' }, content: [{ type: 'text', text: '注入内容' }] } } },
+                // 空壳 assistant 消息(仅承载 usage)应被跳过
+                { event: { type: 'assistant/message', seq: 3, time: 4, data: { message: { role: 'assistant', content: [] } } } },
+                // 工具事件与上下文无关
+                { event: { type: 'tool/result', seq: 4, time: 5, data: { message: { role: 'user', content: [{ type: 'text', text: '工具结果' }] } } } },
+              ],
+            },
+          }
         },
       },
     },
@@ -185,17 +199,50 @@ const DONE = {
 // c6. 设置固定模型时跳过会话模型查询 RPC
 {
   const { ctx, stats } = makeCtx()
-  const c = createOptimizerController(ctx, { isModelPinned: () => true })
+  const c = createOptimizerController(ctx, { isModelPinned: () => true, getSessionModelDirectories: () => ctx.modelDirectories })
   await withFetch(
     () => sseResponse([DONE]),
     async (calls) => {
       await c.optimize('草稿', 's1')
-      assert.equal(stats.modelsCalls, 0, '固定模型时不应查询会话模型')
+      assert.equal(stats.modelDirCalls, 0, '固定模型时不应查询会话模型目录')
       assert.equal(calls[0].body.provider, undefined, 'body 不带会话模型,交给 Host 固定值')
       assert.equal(c.getSnapshot().status, 'done')
     },
   )
   console.log('✓ c6 固定模型跳过 RPC')
+}
+
+// c6b. 跟随会话:目录服务的 current 随请求发出(provider/model)
+{
+  const { ctx, stats } = makeCtx()
+  const c = createOptimizerController(ctx, { getSessionModelDirectories: () => ctx.modelDirectories })
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('草稿', 's1')
+      assert.equal(stats.modelDirCalls, 1, '默认应查询一次会话模型目录')
+      assert.equal(calls[0].body.provider, 'sess-p', 'body 带会话当前 provider')
+      assert.equal(calls[0].body.model, 'sess-m', 'body 带会话当前 model')
+      assert.equal(c.getSnapshot().status, 'done')
+    },
+  )
+  console.log('✓ c6b 跟随会话模型随请求发出')
+}
+
+// c6c. 会话模型目录服务缺席(旧版宿主):回退到 Host 解析,请求不带会话模型
+{
+  const { ctx } = makeCtx({ noModelDirectories: true })
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('草稿', 's1')
+      assert.equal(calls[0].body.provider, undefined, '服务缺席时 body 不带会话模型')
+      assert.equal(calls[0].body.model, undefined, '服务缺席时 body 不带会话模型 id')
+      assert.equal(c.getSnapshot().status, 'done', '缺席只降级,不阻塞主流程')
+    },
+  )
+  console.log('✓ c6c 模型目录服务缺席回退')
 }
 
 // c7. 撤回状态流转:markApplied → clearApplied → close 复位

@@ -123,7 +123,8 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
 - **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
 - **客户端类型面随 0.1.2/0.1.5 迁移**(v0.3.17 适配):`dsh-client-runtime` 包已从上游移除,`ClientContext` 即 cordis 的 `Context`;`SettingsScope` 迁至 `@deepseek-ai/dsh-client-ui-settings/client`(其 `SettingsScopeBinder` 自带 `ctx.settingsScope` 的 Context 合并,插件不再重复声明,否则合并冲突);`ctx.slots` 的合并由 `@deepseek-ai/dsh-client-ui-renderer/client` 提供。`HistoryEntry` / `ModelProviderGroup` 迁入未发布的 `dsh-api-session-controller`,插件改在 `src/client/host-faces.ts` 自带最小结构面,不再追上游类型。
-- **会话查询面**:`connection.api.sessions.*` / `connection.api.llm.models` 在上游发布版(0.1.0-rc.7 → 0.1.5)从未声明、浏览器运行时也不提供;插件按可选结构面调用,缺席时各自降级(模型路由交给 Host 回退解析、上下文按无会话处理),Console 可见对应警告。
+- **会话模型与目录(v0.3.18 起真实可用)**:模型目录走连接层通用 RPC `session/modelCatalog`(`/api` 通道,载荷信封要求恰好一个纯对象 `args` 字段,零参方法即 `{ args: {} }`);「跟随会话」读取官方会话模型目录服务 `ctx.modelDirectories`(`dsh-client-ui-model-selection` 提供,与 /model 弹窗共用同一份目录,其 `current` 即会话实际将使用的模型)。该服务经**独立的可选 inject** 捕获——不能并进主 inject,否则无此服务的宿主会让客户端永远等不到就绪;缺席时回落 Host 回退解析。
+- **会话历史(上下文)仍是缺口**:`connection.api.sessions.history` 这一旧查询面在发布版(0.1.0-rc.7 → 0.1.5)从未声明、浏览器运行时也不提供,插件按可选结构面调用,缺席时按无上下文优化并告警;真实路径需要 `session/follow`/`session/page` 流(还要先从 follow 首帧取 `throughSeq`),待接入。
 - **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
 - **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。0.1.5 起 bundle 以 `/plugins/??<id>/client.js,…&rev=<hash>` 组合 URL 提供,单插件裸路径不再单独暴露(以 boot manifest 里的组合 URL 为准)。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
@@ -134,7 +135,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 - **点了「优化」没有反应?** 打开浏览器 Console 查看 `[dsh-prompt-optimizer]` 开头的日志;常见原因是未配置任何模型(先在 设置 → 模型 里配好提供方),或面板所需的上游槽位尚未就绪(刷新页面)。
 - **提示「未找到可用模型」?** 会话没有选择可路由的模型,且设置卡里也没有固定模型;两者补其一即可。也可以展开设置卡点「测试连接」确认路由可用。
-- **设置卡显示「模型目录加载失败」?** 固定模型用的下拉目录依赖宿主的会话/目录查询面,该面在 0.1.0-rc.7 → 0.1.5 的发布版里都未开放,下拉因此只剩「跟随当前会话」一项;要固定模型,直接在组合层配置里给 `model` 填 `'provider/model'` 即可(优化调用与「测试连接」不受影响)。
+- **设置卡显示「模型目录加载失败」?** v0.3.18 起目录改走宿主 `session/modelCatalog` RPC,正常应能列出全部提供方与模型;仍失败时提示会附上具体原因(点「刷新」重试)。注意「跟随会话」依赖宿主的会话模型目录服务(`ctx.modelDirectories`),个别宿主形态缺席时优化调用会回落到 Host 的第一个可用路由(Console 有对应告警)。
 - **结果被截断?** 面板会出现截断提示;默认开启的「输出上限自适应」会按草稿长度自动抬升上限,仍不够再到设置卡调高「最大输出 Token」。
 - **换了会话模型没生效?** 每次点击都会实时查询会话当前模型;若仍不对,看 Console 是否有 `会话模型查询失败` 的警告(此时会用第一个可用路由兜底)。注意:设置卡里固定了模型时会话选择不生效。
 - **优化调用偶发超时 / RATE_LIMIT 失败?** 这类瞬态错误的重试由宿主在**提供方层**统一处理(dsh 0.1.1+ 的提供方配置内置重试策略,默认覆盖 `RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT / EMPTY_RESPONSE`)。到 设置 → 模型 → 对应提供方 里调整重试次数与退避,而不是调本插件的「超时时间」——后者只管单次调用的总时长。
