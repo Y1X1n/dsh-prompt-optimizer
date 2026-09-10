@@ -109,20 +109,23 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 兼容性
 
-> **当前版本(v0.3.16)适配 DeepSeek Harness**:
+> **当前版本(v0.3.17)适配 DeepSeek Harness**:
 >
 > | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 |
 > |---|---|---|---|
+> | **0.1.5-rc.1** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.1-rc.2 及以下**(0.1.0-rc.7+) | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 >
-> 同一份构建覆盖 0.1.0-rc.7 至 0.1.2 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
+> 同一份构建覆盖 0.1.0-rc.7 至 0.1.5 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
 
-- 开发基线:`@deepseek-ai/*` **0.1.0-rc.7**;已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)。
+- 开发基线:`@deepseek-ai/*` **0.1.5-rc.1**(v0.3.17 起,`sync:types` 钉同一版本);已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)与 **0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)。
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
 - **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
+- **客户端类型面随 0.1.2/0.1.5 迁移**(v0.3.17 适配):`dsh-client-runtime` 包已从上游移除,`ClientContext` 即 cordis 的 `Context`;`SettingsScope` 迁至 `@deepseek-ai/dsh-client-ui-settings/client`(其 `SettingsScopeBinder` 自带 `ctx.settingsScope` 的 Context 合并,插件不再重复声明,否则合并冲突);`ctx.slots` 的合并由 `@deepseek-ai/dsh-client-ui-renderer/client` 提供。`HistoryEntry` / `ModelProviderGroup` 迁入未发布的 `dsh-api-session-controller`,插件改在 `src/client/host-faces.ts` 自带最小结构面,不再追上游类型。
+- **会话查询面**:`connection.api.sessions.*` / `connection.api.llm.models` 在上游发布版(0.1.0-rc.7 → 0.1.5)从未声明、浏览器运行时也不提供;插件按可选结构面调用,缺席时各自降级(模型路由交给 Host 回退解析、上下文按无会话处理),Console 可见对应警告。
 - **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
-- **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。
+- **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。0.1.5 起 bundle 以 `/plugins/??<id>/client.js,…&rev=<hash>` 组合 URL 提供,单插件裸路径不再单独暴露(以 boot manifest 里的组合 URL 为准)。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
 - **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON),成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。
 - 客户端与 Host 需同版本(SSE 协议是私有约定):升级插件后请重启 `dsh web` 并刷新浏览器页面。
@@ -131,6 +134,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 - **点了「优化」没有反应?** 打开浏览器 Console 查看 `[dsh-prompt-optimizer]` 开头的日志;常见原因是未配置任何模型(先在 设置 → 模型 里配好提供方),或面板所需的上游槽位尚未就绪(刷新页面)。
 - **提示「未找到可用模型」?** 会话没有选择可路由的模型,且设置卡里也没有固定模型;两者补其一即可。也可以展开设置卡点「测试连接」确认路由可用。
+- **设置卡显示「模型目录加载失败」?** 固定模型用的下拉目录依赖宿主的会话/目录查询面,该面在 0.1.0-rc.7 → 0.1.5 的发布版里都未开放,下拉因此只剩「跟随当前会话」一项;要固定模型,直接在组合层配置里给 `model` 填 `'provider/model'` 即可(优化调用与「测试连接」不受影响)。
 - **结果被截断?** 面板会出现截断提示;默认开启的「输出上限自适应」会按草稿长度自动抬升上限,仍不够再到设置卡调高「最大输出 Token」。
 - **换了会话模型没生效?** 每次点击都会实时查询会话当前模型;若仍不对,看 Console 是否有 `会话模型查询失败` 的警告(此时会用第一个可用路由兜底)。注意:设置卡里固定了模型时会话选择不生效。
 - **优化调用偶发超时 / RATE_LIMIT 失败?** 这类瞬态错误的重试由宿主在**提供方层**统一处理(dsh 0.1.1+ 的提供方配置内置重试策略,默认覆盖 `RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT / EMPTY_RESPONSE`)。到 设置 → 模型 → 对应提供方 里调整重试次数与退避,而不是调本插件的「超时时间」——后者只管单次调用的总时长。
@@ -139,11 +143,11 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 验证状态
 
-已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
+已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);**v0.3.17 起 0.1.5-rc.1 完成端到端实测**(2026-09-10,Windows,真实 profile + 浏览器驱动:发送栏「优化」按钮随输入启停、点击后面板打开并按 SSE 透传上游错误、设置卡片折叠摘要与展开配置齐全);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
 
-- 组合层加载:`--dump-config` 出现 `# == dsh-prompt-optimizer` 层;
+- 组合层加载:`--dump-config` 出现 `# == @y1x1n/dsh-prompt-optimizer` 层;
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
-- Client:bundle 被 client-modules 扫描收录并出现在 `window.__DSH_BOOT__`,`/plugins/dsh-prompt-optimizer/client.js` 可访问;
+- Client:bundle 被 client-modules 扫描收录并出现在页面 boot manifest(0.1.5 起以 `/plugins/??<ids>&rev=<hash>` 组合 URL 提供),插件行出现在模块清单中;
 - 端到端:真实调用 `ctx.llm`(DeepSeek 路由)完成「分析 + 优化」,标记解析正确(`wellFormed: true`)。
 - 自动化测试(`npm test`,共 62 例):
   - `test/smoke.mjs`:28 项 Host 冒烟用例(真实 cordis Context + mock 服务,覆盖路由解析优先级、空字符串/畸形配置、400/405/409/413、SSE 事件流、max-tokens 截断、超时、快速模式、推理钳档、旧版设置文档归一化、连接测试、回退链与回退原因透传、tool-calls 防御、输出上限自适应、上下文注入与硬开关、策略选择、记忆链注入与截断、来源围栏);
@@ -201,6 +205,7 @@ dsh-prompt-optimizer/
 │   └── client/
 │       ├── index.tsx     # Client 入口:槽位注册
 │       ├── controller.ts # 按钮/面板共享的状态机与 SSE 消费(独立产物,可单测)
+│       ├── host-faces.ts # 宿主客户端服务的最小结构面(自带定义,跨版本稳定)
 │       ├── i18n.ts       # 界面文案 zh/en 字典,跟随 DSH 界面语言
 │       ├── OptimizeButton.tsx   # 发送栏按钮
 │       ├── ResultDock.tsx       # 输入卡上方的结果面板(流式实况 + 撤回)

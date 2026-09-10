@@ -1,21 +1,22 @@
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-// 类型级引入,激活两个目标槽位的 SlotMap 合并声明。
+// 类型级引入,激活目标槽位的 SlotMap 合并声明,以及 ctx.slots / ctx.settingsScope
+// 的 Context 合并(slots 由 ui-renderer 声明,settingsScope 由 ui-settings 声明)。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { createOptimizeButton } from './OptimizeButton.js'
 import { createResultDock } from './ResultDock.js'
 import { createSettingsCard, type OptimizerSettingsValue } from './SettingsCard.js'
 import { createOptimizerController } from './controller.js'
 import { installLocaleFace, type LocaleFace } from './i18n.js'
-// 发布版(rc)里这两个服务没有携带客户端 Context 合并,这里按实际形状补齐。
+// connection 的客户端 Context 合并发布版不带,这里按实际形状补齐。
+// settingsScope 的合并不能在这里重复声明:0.1.2 起改由
+// @deepseek-ai/dsh-client-ui-settings/client 自行声明(SettingsScopeBinder),
+// 再声明一次会与上游的合并声明类型不一致而报 duplicate。
 declare module '@deepseek-ai/cordis' {
   interface Context {
     connection: ConnectionHandle
-    /** 由 @deepseek-ai/dsh-client-ui-settings 提供的设置命名空间绑定服务。 */
-    settingsScope: {
-      bind<T>(spec: { namespace: string }): SettingsScope<T>
-    }
   }
 }
 

@@ -20,25 +20,34 @@ const TAR = 'tar' // Windows 10+ 自带 bsdtar
 const root = resolve(import.meta.dirname, '..')
 const nmDir = join(root, 'node_modules', '@deepseek-ai')
 
-/** 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.1.0-rc.7 的内置包一致)。 */
+/**
+ * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.1.5-rc.1 的内置包一致)。
+ *
+ * 0.1.2 起上游把客户端运行时拆进了消费方:`dsh-client-runtime` 与
+ * `dsh-host-apiproxy` 不再发布(restricted),`ClientContext` 由 cordis 的
+ * `Context` 承担,`SettingsScope`/`SettingsScopeBinder` 迁到
+ * `dsh-client-ui-settings/client`。因此这份清单里不再有这两个包。
+ */
 const PACKAGES = {
-  'dsh-client-runtime': '0.1.0-rc.7',
-  'dsh-client-connection': '0.1.0-rc.7',
-  'dsh-client-ui-slots': '0.1.0-rc.7',
-  'dsh-client-ui-conversation': '0.1.0-rc.7',
-  'dsh-client-ui-settings-plugins': '0.1.0-rc.7',
-  'dsh-host-apiproxy': '0.1.0-rc.7',
-  'dsh-attachment': '0.1.0-rc.7',
-  'dsh-brand': '0.1.0-rc.7',
-  'dsh-client-locale': '0.1.0-rc.7',
-  'dsh-client-ui-primitives': '0.1.0-rc.7',
-  'dsh-commands': '0.1.0-rc.7',
-  'dsh-llm-retry': '0.1.0-rc.7',
-  'dsh-session': '0.1.0-rc.7',
-  'dsh-session-projection': '0.1.0-rc.7',
-  'dsh-token-meter': '0.1.0-rc.7',
-  'dsh-tool-todo': '0.1.0-rc.7',
-  'dsh-tools': '0.1.0-rc.7',
+  'dsh-client-connection': '0.1.5-rc.1',
+  'dsh-client-ui-slots': '0.1.5-rc.1',
+  'dsh-client-ui-conversation': '0.1.5-rc.1',
+  'dsh-client-ui-session': '0.1.5-rc.1',
+  'dsh-client-ui-settings': '0.1.5-rc.1',
+  'dsh-client-ui-settings-plugins': '0.1.5-rc.1',
+  'dsh-client-ui-renderer': '0.1.5-rc.1',
+  'dsh-api-remotes': '0.1.5-rc.1',
+  'dsh-attachment': '0.1.5-rc.1',
+  'dsh-brand': '0.1.5-rc.1',
+  'dsh-client-locale': '0.1.5-rc.1',
+  'dsh-client-ui-primitives': '0.1.5-rc.1',
+  'dsh-commands': '0.1.5-rc.1',
+  'dsh-llm-retry': '0.1.5-rc.1',
+  'dsh-session': '0.1.5-rc.1',
+  'dsh-session-projection': '0.1.5-rc.1',
+  'dsh-token-meter': '0.1.5-rc.1',
+  'dsh-tool-todo': '0.1.5-rc.1',
+  'dsh-tools': '0.1.5-rc.1',
 }
 
 mkdirSync(nmDir, { recursive: true })

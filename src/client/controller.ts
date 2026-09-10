@@ -1,5 +1,8 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { HistoryEntry, SessionId } from '@deepseek-ai/dsh-client-connection/client'
+// 0.1.2 起 dsh-client-runtime 已并包移除,ClientContext 即 cordis 的 Context。
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import type { OptimizerHistoryEntry } from './host-faces.js'
+import { legacyQueryFace } from './host-faces.js'
 import { capConversationContext, compactPartialBuffer, parsePartialOptimizerOutput, type ConversationTurn } from '../prompt.js'
 
 export interface OptimizeResult {
@@ -100,7 +103,7 @@ function sampleContextTurns(turns: ConversationTurn[]): ConversationTurn[] {
  * (assistant/message,跳过只承载 usage 的空壳消息)。返回按时间升序,
  * 已按共享预算收敛(用户消息保底 4 条,总量 ≤8 条 / 1600 字符)。
  */
-export function extractContextTurns(entries: readonly HistoryEntry[]): ConversationTurn[] {
+export function extractContextTurns(entries: readonly OptimizerHistoryEntry[]): ConversationTurn[] {
   const turns: ConversationTurn[] = []
   for (const entry of entries) {
     const event = entry?.event
@@ -232,12 +235,14 @@ export function createOptimizerController(
         (async (): Promise<{ provider?: string; model?: string; reasoningEffort?: string } | undefined> => {
           if (opts.isModelPinned?.()) return undefined
           try {
-            const resp = await ctx.connection.api.sessions.models({ sessionId }, controller.signal)
-            if (resp.result.ok) {
-              const current = resp.result.value.current
+            // connection.api 在上游发布版中从未存在(见 host-faces.ts),缺席时走 Host 回退。
+            const result = (await legacyQueryFace(ctx.connection)?.sessions?.models({ sessionId }, controller.signal))?.result
+            if (result?.ok) {
+              const current = result.value.current
               return { provider: current.provider, model: current.model, reasoningEffort: current.reasoningEffort }
             }
-            console.warn('[dsh-prompt-optimizer] 会话模型查询被拒绝,改用 Host 回退:', resp.result.error)
+            console.warn('[dsh-prompt-optimizer] 会话模型查询被拒绝,改用 Host 回退:',
+              result && !result.ok ? result.error : '会话查询面在当前 dsh 版本缺席')
           } catch (cause) {
             console.warn('[dsh-prompt-optimizer] 会话模型查询失败,改用 Host 回退:', cause)
           }
@@ -248,12 +253,13 @@ export function createOptimizerController(
           try {
             // 页大小放宽到 24:agentic 会话里 assistant 步骤消息远多于用户消息,
             // 取样要保证能捞到最近 4 条用户输入(见 sampleContextTurns)。
-            const resp = await ctx.connection.api.sessions.history({ sessionId, maxMessages: 24 }, controller.signal)
-            if (resp.result.ok) {
-              const turns = extractContextTurns(resp.result.value.events)
+            const result = (await legacyQueryFace(ctx.connection)?.sessions?.history({ sessionId, maxMessages: 24 }, controller.signal))?.result
+            if (result?.ok) {
+              const turns = extractContextTurns(result.value.events ?? [])
               return turns.length ? turns : undefined
             }
-            console.warn('[dsh-prompt-optimizer] 会话历史查询被拒绝,按无上下文优化:', resp.result.error)
+            console.warn('[dsh-prompt-optimizer] 会话历史查询被拒绝,按无上下文优化:',
+              result && !result.ok ? result.error : '会话查询面在当前 dsh 版本缺席')
           } catch (cause) {
             console.warn('[dsh-prompt-optimizer] 会话历史查询失败,按无上下文优化:', cause)
           }

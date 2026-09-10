@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ModelProviderGroup } from '@deepseek-ai/dsh-client-connection/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+// 0.1.2 起 SettingsScope 由 dsh-client-ui-settings/client 提供(dsh-client-runtime 已并包移除)。
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { OptimizerModelGroup } from './host-faces.js'
+import { legacyQueryFace } from './host-faces.js'
 import { useT } from './i18n.js'
 import { GitHubIcon } from './GitHubIcon.js'
 
@@ -228,13 +231,14 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
     }
 
     // 模型下拉需要目录:挂载时拉取一次,失败或后续新增 provider 时可手动刷新。
-    const [groups, setGroups] = useState<ModelProviderGroup[] | null>(null)
+    const [groups, setGroups] = useState<OptimizerModelGroup[] | null>(null)
     const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
     const loadCatalog = async () => {
       setCatalogState('loading')
       try {
-        const resp = await ctx.connection.api.llm.models({})
-        if (resp.result.ok) {
+        // connection.api 在上游发布版中从未存在(见 host-faces.ts),缺席时下拉只保留「跟随会话」。
+        const resp = await legacyQueryFace(ctx.connection)?.llm?.models({})
+        if (resp?.result.ok) {
           setGroups(resp.result.value.groups)
           setCatalogState('ready')
         } else {
