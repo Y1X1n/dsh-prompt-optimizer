@@ -40,6 +40,12 @@ function ensureFocusStyles(): void {
   style.id = ID
   style.textContent =
     '.dsh-po-btn:focus-visible{outline:2px solid var(--dsw-alias-state-focus-ring, #4f7cf7);outline-offset:2px;border-radius:4px;}'
+    // 发送栏「优化」按钮的底色与 hover:对齐官方工具胶囊(5% 中性浅底、全圆角)。
+    // 底色用 label-primary 做 color-mix 近似官方 #f5f6f7,color-mix 不支持时
+    // 整条声明失效、回落透明底;hover 加深一档给可点击性反馈。
+    // (放在样式表而非 inline:hover 会被 inline background 盖掉。)
+    + '.dsh-po-opt{background:color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 5%, transparent);}'
+    + '.dsh-po-opt:hover:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 9%, transparent);}'
     // 设置卡标题栏的 GitHub 仓库链接:hover 提亮 + 淡背景,给可点击性一个视觉反馈。
     + '.dsh-po-repo-link{transition:color 0.15s ease,background-color 0.15s ease;}'
     + '.dsh-po-repo-link:hover{color:var(--dsw-alias-label-primary, inherit);background-color:var(--dsw-alias-fill-secondary, rgba(128,128,128,0.12));}'
