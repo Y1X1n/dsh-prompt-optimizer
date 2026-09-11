@@ -113,17 +113,18 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 >
 > | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 |
 > |---|---|---|---|
+> | **0.1.5-rc.2** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.5-rc.1** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.1-rc.2 及以下**(0.1.0-rc.7+) | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 >
 > 同一份构建覆盖 0.1.0-rc.7 至 0.1.5 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
 
-- 开发基线:`@deepseek-ai/*` **0.1.5-rc.1**(v0.3.17 起,`sync:types` 钉同一版本);已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)与 **0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)。
+- 开发基线:`@deepseek-ai/*` **0.1.5-rc.1**(v0.3.17 起,`sync:types` 钉同一版本);已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)与 **0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
 - **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
 - **客户端类型面随 0.1.2/0.1.5 迁移**(v0.3.17 适配):`dsh-client-runtime` 包已从上游移除,`ClientContext` 即 cordis 的 `Context`;`SettingsScope` 迁至 `@deepseek-ai/dsh-client-ui-settings/client`(其 `SettingsScopeBinder` 自带 `ctx.settingsScope` 的 Context 合并,插件不再重复声明,否则合并冲突);`ctx.slots` 的合并由 `@deepseek-ai/dsh-client-ui-renderer/client` 提供。`HistoryEntry` / `ModelProviderGroup` 迁入未发布的 `dsh-api-session-controller`,插件改在 `src/client/host-faces.ts` 自带最小结构面,不再追上游类型。
-- **会话模型与目录(v0.3.18 起真实可用)**:模型目录走连接层通用 RPC `session/modelCatalog`(`/api` 通道,载荷信封要求恰好一个纯对象 `args` 字段,零参方法即 `{ args: {} }`);「跟随会话」读取官方会话模型目录服务 `ctx.modelDirectories`(`dsh-client-ui-model-selection` 提供,与 /model 弹窗共用同一份目录,其 `current` 即会话实际将使用的模型)。该服务经**独立的可选 inject** 捕获——不能并进主 inject,否则无此服务的宿主会让客户端永远等不到就绪;缺席时回落 Host 回退解析。
+- **会话模型与目录(v0.3.17 起真实可用)**:模型目录走连接层通用 RPC `session/modelCatalog`(`/api` 通道,载荷信封要求恰好一个纯对象 `args` 字段,零参方法即 `{ args: {} }`);「跟随会话」读取官方会话模型目录服务 `ctx.modelDirectories`(`dsh-client-ui-model-selection` 提供,与 /model 弹窗共用同一份目录,其 `current` 即会话实际将使用的模型)。该服务经**独立的可选 inject** 捕获——不能并进主 inject,否则无此服务的宿主会让客户端永远等不到就绪;缺席时回落 Host 回退解析。
 - **会话历史(上下文)仍是缺口**:`connection.api.sessions.history` 这一旧查询面在发布版(0.1.0-rc.7 → 0.1.5)从未声明、浏览器运行时也不提供,插件按可选结构面调用,缺席时按无上下文优化并告警;真实路径需要 `session/follow`/`session/page` 流(还要先从 follow 首帧取 `throughSeq`),待接入。
 - **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
 - **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。0.1.5 起 bundle 以 `/plugins/??<id>/client.js,…&rev=<hash>` 组合 URL 提供,单插件裸路径不再单独暴露(以 boot manifest 里的组合 URL 为准)。
@@ -135,7 +136,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 - **点了「优化」没有反应?** 打开浏览器 Console 查看 `[dsh-prompt-optimizer]` 开头的日志;常见原因是未配置任何模型(先在 设置 → 模型 里配好提供方),或面板所需的上游槽位尚未就绪(刷新页面)。
 - **提示「未找到可用模型」?** 会话没有选择可路由的模型,且设置卡里也没有固定模型;两者补其一即可。也可以展开设置卡点「测试连接」确认路由可用。
-- **设置卡显示「模型目录加载失败」?** v0.3.18 起目录改走宿主 `session/modelCatalog` RPC,正常应能列出全部提供方与模型;仍失败时提示会附上具体原因(点「刷新」重试)。注意「跟随会话」依赖宿主的会话模型目录服务(`ctx.modelDirectories`),个别宿主形态缺席时优化调用会回落到 Host 的第一个可用路由(Console 有对应告警)。
+- **设置卡显示「模型目录加载失败」?** v0.3.17 起目录改走宿主 `session/modelCatalog` RPC,正常应能列出全部提供方与模型;仍失败时提示会附上具体原因(点「刷新」重试)。注意「跟随会话」依赖宿主的会话模型目录服务(`ctx.modelDirectories`),个别宿主形态缺席时优化调用会回落到 Host 的第一个可用路由(Console 有对应告警)。
 - **结果被截断?** 面板会出现截断提示;默认开启的「输出上限自适应」会按草稿长度自动抬升上限,仍不够再到设置卡调高「最大输出 Token」。
 - **换了会话模型没生效?** 每次点击都会实时查询会话当前模型;若仍不对,看 Console 是否有 `会话模型查询失败` 的警告(此时会用第一个可用路由兜底)。注意:设置卡里固定了模型时会话选择不生效。
 - **优化调用偶发超时 / RATE_LIMIT 失败?** 这类瞬态错误的重试由宿主在**提供方层**统一处理(dsh 0.1.1+ 的提供方配置内置重试策略,默认覆盖 `RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT / EMPTY_RESPONSE`)。到 设置 → 模型 → 对应提供方 里调整重试次数与退避,而不是调本插件的「超时时间」——后者只管单次调用的总时长。
@@ -144,7 +145,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 验证状态
 
-已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);**v0.3.17 起 0.1.5-rc.1 完成端到端实测**(2026-09-10,Windows,真实 profile + 浏览器驱动:发送栏「优化」按钮随输入启停、点击后面板打开并按 SSE 透传上游错误、设置卡片折叠摘要与展开配置齐全);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
+已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);**v0.3.17 起 0.1.5-rc.1 完成端到端实测**(2026-09-10,Windows,真实 profile + 浏览器驱动:发送栏「优化」按钮随输入启停、点击后面板打开并按 SSE 透传上游错误、设置卡片折叠摘要与展开配置齐全),**并在 0.1.5-rc.2 上完成全链路复测**(2026-09-11:组合层注入、Host 加载、路由契约、SSE 端到端、四种策略路径、client bundle 槽位与设置卡 API 全项通过);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
 
 - 组合层加载:`--dump-config` 出现 `# == @y1x1n/dsh-prompt-optimizer` 层;
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
