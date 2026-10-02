@@ -90,7 +90,6 @@ export function createSettingsFace(): {
 } {
   let backend: Backend | null = null
   let offBackend: (() => void) | null = null
-  let hadBackend = false
   const listeners = new Set<() => void>()
   // 后端缺席时的固定 loading 快照:引用稳定,useSyncExternalStore 不会反复重渲染。
   let loadingSnapshot: SettingsSnapshot | null = null
@@ -110,11 +109,8 @@ export function createSettingsFace(): {
     offBackend?.()
     backend = next
     offBackend = next.subscribeRaw(notify)
-    // 首个后端到达:快照从 loading 变为实际状态,通知既有订阅者。
-    if (!hadBackend) {
-      hadBackend = true
-      notify()
-    }
+    // 后端到达或切换:快照来源改变,统一通知一次(notify 会先失效缓存)。
+    notify()
   }
 
   const face: SettingsFace = {
