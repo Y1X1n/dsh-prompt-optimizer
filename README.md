@@ -109,16 +109,20 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 兼容性
 
-> **当前版本(v0.3.17)适配 DeepSeek Harness**:
+> **当前版本(v0.4.0)适配 DeepSeek Harness**:
 >
 > | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 |
 > |---|---|---|---|
+> | **0.2.0-rc.2(Web + 官方桌面端)** | ✅ 实测 | ✅ 实测(volatile 配置 + 原生风格设置卡) | ✅ 实测 |
 > | **0.1.5-rc.2** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.5-rc.1** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.2-rc.1 / 0.1.2-alpha.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 > | **0.1.1-rc.2 及以下**(0.1.0-rc.7+) | ✅ 实测 | ✅ 实测 | ✅ 实测 |
 >
-> 同一份构建覆盖 0.1.0-rc.7 至 0.1.5 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
+> 同一份构建覆盖 0.1.0-rc.7 至 0.2.0 全线;此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
+
+- **v0.4.0 适配 dsh 0.2.0-rc.2(2026-10-03,Windows,真实 profile 端到端)**:①设置迁移——0.2.0 移除 `settingsScope` 服务与 `settings.plugin.item` 槽位,设置改由宿主按插件 Config schema 自动生成表单;本插件 Config 全字段声明 `.volatile()`(volatile 字段经引用 cell 原位更新,**修改设置不重挂载插件**),客户端经 `configForms` 读写,设置卡同时注册 0.2.0 的 `settings.plugins.tab` 与 0.1.x 的 `settings.plugin.item` 双槽位,宿主各自渲染认识的那一个;②设置卡按 0.2.0 官方设计语言重做(平铺行布局、官方同款分段控件与开关、`configure({auto:false})` 关闭宿主原生表单避免重复);③消息源 `kind:'plugin'` 以结构断言跨过 0.2.0 收窄后的联合类型(运行时按 merge-extensible 容忍);④已在 **0.2.0-rc.2 Web**(按钮、SSE 面板、模型目录 RPC、设置卡读写与撤销、配置写入 profile 补丁且插件不重启)与**官方桌面端**(Electron `DeepSeek Harness 0.2.0-rc.2`,desktop profile 经应用自带 CLI 安装,发送栏按钮与设置卡 UIA 实测)通过验证。
+- **官方桌面端安装**:桌面应用首次启动初始化 `desktop` profile 后,完全退出应用,用应用自带 CLI 安装并重启:`"E:\Deepseek-Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @y1x1n/dsh-prompt-optimizer`(macOS/Linux 路径见应用安装目录);不要用 npm 版 CLI 管理桌面保留 profile。
 
 - 开发基线:`@deepseek-ai/*` **0.1.5-rc.1**(v0.3.17 起,`sync:types` 钉同一版本);已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)与 **0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。

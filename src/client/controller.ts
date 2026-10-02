@@ -225,7 +225,7 @@ export function createOptimizerController(
       set({
         status: 'error',
         live: null,
-        error: `请求超时(客户端 ${seconds} 秒无响应,Host 可能未运行)。可在 设置 → 插件配置 → 提示词优化 中调高「超时时间」。`,
+        error: `请求超时(客户端 ${seconds} 秒无响应,Host 可能未运行)。可在 设置的插件页「提示词优化」 中调高「超时时间」。`,
       })
     }
     // 从点击起计时(含会话查询与首 token 前的等待),done 时记入 result 展示。

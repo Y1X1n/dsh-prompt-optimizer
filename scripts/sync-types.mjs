@@ -21,33 +21,33 @@ const root = resolve(import.meta.dirname, '..')
 const nmDir = join(root, 'node_modules', '@deepseek-ai')
 
 /**
- * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.1.5-rc.1 的内置包一致)。
+ * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.2.0-rc.2 的内置包一致)。
  *
  * 0.1.2 起上游把客户端运行时拆进了消费方:`dsh-client-runtime` 与
  * `dsh-host-apiproxy` 不再发布(restricted),`ClientContext` 由 cordis 的
- * `Context` 承担,`SettingsScope`/`SettingsScopeBinder` 迁到
- * `dsh-client-ui-settings/client`。因此这份清单里不再有这两个包。
+ * `Context` 承担。0.2.0 起 monorepo 全量发包,`SettingsScope` 被移除
+ * (`dsh-client-ui-settings` 只提供 configForms),设置面改走本插件自带的结构面。
  */
 const PACKAGES = {
-  'dsh-client-connection': '0.1.5-rc.1',
-  'dsh-client-ui-slots': '0.1.5-rc.1',
-  'dsh-client-ui-conversation': '0.1.5-rc.1',
-  'dsh-client-ui-session': '0.1.5-rc.1',
-  'dsh-client-ui-settings': '0.1.5-rc.1',
-  'dsh-client-ui-settings-plugins': '0.1.5-rc.1',
-  'dsh-client-ui-renderer': '0.1.5-rc.1',
-  'dsh-api-remotes': '0.1.5-rc.1',
-  'dsh-attachment': '0.1.5-rc.1',
-  'dsh-brand': '0.1.5-rc.1',
-  'dsh-client-locale': '0.1.5-rc.1',
-  'dsh-client-ui-primitives': '0.1.5-rc.1',
-  'dsh-commands': '0.1.5-rc.1',
-  'dsh-llm-retry': '0.1.5-rc.1',
-  'dsh-session': '0.1.5-rc.1',
-  'dsh-session-projection': '0.1.5-rc.1',
-  'dsh-token-meter': '0.1.5-rc.1',
-  'dsh-tool-todo': '0.1.5-rc.1',
-  'dsh-tools': '0.1.5-rc.1',
+  'dsh-client-connection': '0.2.0-rc.2',
+  'dsh-client-ui-slots': '0.2.0-rc.2',
+  'dsh-client-ui-conversation': '0.2.0-rc.2',
+  'dsh-client-ui-session': '0.2.0-rc.2',
+  'dsh-client-ui-settings': '0.2.0-rc.2',
+  'dsh-client-ui-settings-plugins': '0.2.0-rc.2',
+  'dsh-client-ui-renderer': '0.2.0-rc.2',
+  'dsh-api-remotes': '0.2.0-rc.2',
+  'dsh-attachment': '0.2.0-rc.2',
+  'dsh-brand': '0.2.0-rc.2',
+  'dsh-client-locale': '0.2.0-rc.2',
+  'dsh-client-ui-primitives': '0.2.0-rc.2',
+  'dsh-commands': '0.2.0-rc.2',
+  'dsh-llm-retry': '0.2.0-rc.2',
+  'dsh-session': '0.2.0-rc.2',
+  'dsh-session-projection': '0.2.0-rc.2',
+  'dsh-token-meter': '0.2.0-rc.2',
+  'dsh-tool-todo': '0.2.0-rc.2',
+  'dsh-tools': '0.2.0-rc.2',
 }
 
 mkdirSync(nmDir, { recursive: true })

@@ -1,8 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-// 0.1.2-rc.1 起设置能力改为 SettingsProvider 实例方法(installSection);
-// 这里只导类型,运行时经 ctx.settings 注入拿实例(服务缺席回落组合层配置)。
-import type { SettingsProvider } from '@deepseek-ai/dsh-settings'
+// 0.2.0 起设置改为宿主按插件 Config schema 自动生成表单(SettingsForms),
+// 插件不再注册命名空间;0.1.x 线的两套 API 由下方运行时探测分派,类型只在本地声明。
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { buildSystemPrompt, buildUserPayload, capConversationContext, createThinkFilter, estimateTokens, parseOptimizerOutput, type ConversationTurn, type OptimizerMode, type OutputLanguage } from './prompt.js'
@@ -36,21 +35,50 @@ export interface Config {
   includeContext: boolean
 }
 
-// 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 ~/.dsh/settings.yaml,
-// 旧版本写过的枚举值(如 mode: custom)若撞上严格 union 会让 schema 校验抛错,
-// 整个命名空间注册失败、设置页卡片直接消失。宽松接收 + 使用处归一化更稳。
-export const Config: Schema<Config> = Schema.object({
-  language: Schema.string().default('zh'),
-  model: Schema.string(),
-  fallbackModel: Schema.string(),
-  maxTokens: Schema.number().min(1024).max(32768).default(8192),
-  timeoutSeconds: Schema.number().min(10).max(600).default(120),
-  mode: Schema.string().default('full'),
-  reasoningEffort: Schema.string().default('lowest'),
-  temperature: Schema.number().min(0).max(2).default(0.2),
-  autoMaxTokens: Schema.boolean().default(true),
-  includeContext: Schema.boolean().default(true),
+// 枚举字段刻意用宽松 string 而非 union:设置文档持久化在 profile 补丁/旧版
+// settings.yaml,旧版本写过的枚举值(如 mode: custom)若撞上严格 union 会让
+// schema 校验抛错,整个配置解析失败。宽松接收 + 使用处归一化更稳。
+// 全字段 .volatile():0.2.0 起宿主只把 volatile 字段投影成 Web 设置表单
+// (SettingsForms.volatileForm),且这类字段经 Volatile 引用原位更新——
+// 设置修改不重挂载插件;0.1.x 宿主忽略该标记,行为不变。
+export const Config = Schema.object({
+  language: Schema.string().default('zh').volatile(),
+  model: Schema.string().volatile(),
+  fallbackModel: Schema.string().volatile(),
+  maxTokens: Schema.number().min(1024).max(32768).default(8192).volatile(),
+  timeoutSeconds: Schema.number().min(10).max(600).default(120).volatile(),
+  mode: Schema.string().default('full').volatile(),
+  reasoningEffort: Schema.string().default('lowest').volatile(),
+  temperature: Schema.number().min(0).max(2).default(0.2).volatile(),
+  autoMaxTokens: Schema.boolean().default(true).volatile(),
+  includeContext: Schema.boolean().default(true).volatile(),
 })
+
+/** 0.2.0 volatile 字段的运行时形态:宿主原位更新的引用 cell(cosmokit Volatile)。 */
+interface VolatileCell<T> {
+  get(): T
+}
+
+/** volatile cell 按结构识别取值;普通值(0.1.x / 直调 apply)原样返回。 */
+function unwrapCell<T>(value: T | VolatileCell<T>): T {
+  return typeof (value as VolatileCell<T>)?.get === 'function' ? (value as VolatileCell<T>).get() : (value as T)
+}
+
+/** 把 apply 收到的 config 归一为普通值快照(0.2.0 的 volatile 字段是引用 cell)。 */
+function readConfig(raw: Config): Config {
+  return {
+    language: unwrapCell(raw.language),
+    model: unwrapCell(raw.model),
+    fallbackModel: unwrapCell(raw.fallbackModel),
+    maxTokens: unwrapCell(raw.maxTokens),
+    timeoutSeconds: unwrapCell(raw.timeoutSeconds),
+    mode: unwrapCell(raw.mode),
+    reasoningEffort: unwrapCell(raw.reasoningEffort),
+    temperature: unwrapCell(raw.temperature),
+    autoMaxTokens: unwrapCell(raw.autoMaxTokens),
+    includeContext: unwrapCell(raw.includeContext),
+  }
+}
 
 // 0.1.2-rc.1 起 ns 直接传字符串,由 SettingsNamespaceInput 做小写-连字符校验。
 const NS = 'prompt-optimizer' as const
@@ -85,6 +113,17 @@ interface OptimizeRequestBody {
   reasoningEffort?: unknown
   context?: unknown
   previous?: unknown
+}
+
+/** 0.1.2+ settings.installSection 的回调包(仅类型面使用)。 */
+interface SettingsHooks {
+  setSource(source: () => Config): void
+  onChange(): void
+}
+
+/** 跨版本传递给 settings API 的 schema 最小结构面(带 toJSON 的 schemastery 实例)。 */
+interface SettingsSchemaLike {
+  toJSON(): unknown
 }
 
 function asOptionalString(value: unknown): string | undefined {
@@ -310,39 +349,51 @@ export function apply(ctx: Context, config: Config) {
   }
 
   // 设置页命名空间:组合层配置作为 base,用户在 设置→插件配置 中的修改实时生效。
-  // dsh-settings API 在 0.1.2 线重写(独立函数 installSettingsSection 移除,改为
-  // SettingsProvider 实例方法 installSection)。这里运行时按能力探测分派,保证
-  // 同一份构建向下兼容:
+  // 按能力探测分派,保证同一份构建跨版本:
+  //  - 0.2.0 起 ctx.settings 是 SettingsForms:按插件导出的 Config schema 自动
+  //    生成配置表单(namespace = 组合行 id)。volatile 字段经引用 cell 原位更新,
+  //    插件不重挂载——current() 在读取时展开 cell 即可,无需注册命名空间。
+  //    这里同时关闭宿主的原生自动表单(auto:false),避免与设置卡重复;
   //  - settings.installSection 是函数(0.1.2-alpha.5+ / 0.1.2-rc.1)→ 新 API;
   //  - 否则(0.1.0-rc.x / 0.1.1-rc.x)→ 旧独立函数的等价内联
   //    (register{base} + setSource + watch + 卸载回落 entry,对照 0.1.0-rc.7 实现);
   //  - settings 服务整体缺席 → current 保持组合层配置,行为与更早版本一致。
-  let current = (): Config => config
+  let current = (): Config => readConfig(config)
   ctx.inject(['settings'], (sctx) => {
-    const settings = (sctx as unknown as { settings?: SettingsProvider }).settings
+    const settings = (sctx as unknown as {
+      settings?: {
+        configure?: (presentation: { auto?: boolean }, owner?: unknown) => () => void
+        installSection?: (c: Context, ns: string, schema: SettingsSchemaLike, base: Config, hooks: SettingsHooks) => void
+        register?: (ns: string, schema: SettingsSchemaLike, opts: { base: Config }) => { get(): Config; watch(fn: () => void): () => void }
+      }
+    }).settings
     if (!settings) return
-    const hooks = {
-      setSource: (source: () => Config) => {
-        current = source
-      },
-      onChange: () => {},
+    if (typeof settings.configure === 'function') {
+      // 0.2.0:插件自带设置卡,关闭宿主按 Config schema 生成的原生表单页。
+      ctx.effect(() => settings.configure!({ auto: false }, (ctx as unknown as { fiber?: unknown }).fiber))
     }
     if (typeof settings.installSection === 'function') {
-      settings.installSection(ctx, NS, Config, config, hooks)
+      settings.installSection(ctx, NS, Config, config, {
+        setSource: (source) => {
+          current = () => readConfig(source())
+        },
+        onChange: () => {},
+      })
       return
     }
+    if (typeof settings.register !== 'function') return // 0.2.0:配置由 volatile cell 承载
     const scope = settings.register(NS, Config, { base: config })
-    hooks.setSource(() => scope.get())
-    hooks.onChange()
-    const disposeWatch = scope.watch(() => hooks.onChange())
+    current = () => readConfig(scope.get())
+    const disposeWatch = scope.watch(() => {
+      current = () => readConfig(scope.get())
+    })
     ctx.effect(() => () => {
       disposeWatch()
-      hooks.setSource(() => config)
-      hooks.onChange()
+      current = () => readConfig(config)
     })
   })
   // 启动即对初始配置做一次非法枚举告警;请求期配置可能被实时改写,handler 内还会复查。
-  warnUnknownEnumConfig(config)
+  warnUnknownEnumConfig(current())
 
   let mounted = false
   const mount = (server: WebRouteService | undefined) => {
@@ -401,7 +452,7 @@ export function apply(ctx: Context, config: Config) {
         if (!route) {
           writeJson(res, 409, {
             ok: false,
-            error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置 → 插件配置 → 提示词优化 中固定一个模型',
+            error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置的插件页「提示词优化」 中固定一个模型',
           })
           return
         }
@@ -424,12 +475,15 @@ export function apply(ctx: Context, config: Config) {
         // 与 context 一样跟随「携带上下文」开关——关闭后不带任何会话衍生材料。
         const previousRaw = cfg.includeContext === false ? undefined : asOptionalString(body.previous)
         const previous = previousRaw ? (previousRaw.length > 1500 ? `${previousRaw.slice(0, 1500)}…` : previousRaw) : undefined
-        const message: Message = {
-          id: `prompt-optimizer-${crypto.randomUUID()}` as Message['id'],
+        // 0.2.0 把消息源联合收窄为 user/model/tool/system-prompt,但运行时按
+        // merge-extensible 容忍未知源(插件署名仍是最直接的审计信息);保留
+        // kind:'plugin' 形状,以结构断言跨过两代类型定义。
+        const message = {
+          id: `prompt-optimizer-${crypto.randomUUID()}`,
           role: 'user',
           content: [{ type: 'text', text: buildUserPayload(text, language, context, previous) }],
           source: { kind: 'plugin', plugin: name },
-        }
+        } as unknown as Message
         // 策略分叉:有上下文走「提炼目的 + 润色」(不套模板),无上下文走「结构模板」改写。
         const system = buildSystemPrompt(language, mode, context?.length ? 'intent' : 'template')
         // 输出上限跟随输入长度:优化结果体量与草稿正相关(完整模式还多一段分析),
@@ -523,7 +577,7 @@ export function apply(ctx: Context, config: Config) {
           } else if (timedOut) {
             send({
               type: 'error',
-              error: `优化超时:${timeoutSec} 秒内未生成完毕。可在 设置 → 插件配置 → 提示词优化 中调高「超时时间」。`,
+              error: `优化超时:${timeoutSec} 秒内未生成完毕。可在 设置的插件页「提示词优化」 中调高「超时时间」。`,
             })
           } else if (!abort.signal.aborted && lastError) {
             const message = lastError instanceof Error ? lastError.message : String(lastError)
@@ -556,7 +610,7 @@ export function apply(ctx: Context, config: Config) {
     if (!route) {
       writeJson(res, 409, {
         ok: false,
-        error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置 → 插件配置 → 提示词优化 中固定一个模型',
+        error: '未找到可用模型:请先在 设置 → 模型 中配置提供方,或在 设置的插件页「提示词优化」 中固定一个模型',
       })
       return
     }
@@ -571,12 +625,13 @@ export function apply(ctx: Context, config: Config) {
     }, 20_000)
     const started = Date.now()
     try {
-      const message: Message = {
-        id: `prompt-optimizer-test-${crypto.randomUUID()}` as Message['id'],
+      // 同上:插件署名的消息源以结构断言跨版本。
+      const message = {
+        id: `prompt-optimizer-test-${crypto.randomUUID()}`,
         role: 'user',
         content: [{ type: 'text', text: 'ping' }],
         source: { kind: 'plugin', plugin: name },
-      }
+      } as unknown as Message
       const result = await collectText(
         ctx.llm.stream({ provider: route.provider, model: route.model, messages: [message], maxTokens: 32, signal: abort.signal }),
       )
