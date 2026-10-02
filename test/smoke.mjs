@@ -362,7 +362,10 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
 // ——那会导致整个命名空间注册失败、设置页卡片消失。宽松接收 + 使用处归一化。
 {
   const resolved = plugin.Config({ language: 'fr', mode: 'custom', reasoningEffort: 'weird', maxTokens: 8192, timeoutSeconds: 120 })
-  assert.equal(resolved.mode, 'custom', 'schema 应宽松接收未知枚举值')
+  // 0.4.0 起字段带 .volatile():校验产物是 Volatile 引用 cell(0.2.0 宿主原位更新,
+  // 读取经 .get() 展开);0.1.x 宿主无此包装,直取普通值。
+  const plain = (v) => (v && typeof v.get === 'function' ? v.get() : v)
+  assert.equal(plain(resolved.mode), 'custom', 'schema 应宽松接收未知枚举值')
   const { handler, getOptions } = await setup({ config: { language: 'fr', mode: 'custom', reasoningEffort: 'weird' } })
   const res = await call(handler, { text: 'x', provider: 'p', model: 'm' })
   doneOf(res)

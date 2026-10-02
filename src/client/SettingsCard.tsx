@@ -1,139 +1,154 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// 0.1.2 起 SettingsScope 由 dsh-client-ui-settings/client 提供(dsh-client-runtime 已并包移除)。
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { OptimizerModelFailure, OptimizerModelGroup } from './host-faces.js'
 import { sessionCatalog } from './host-faces.js'
+import type { OptimizerSettingsValue, SettingsFace } from './settings-face.js'
 import { useT } from './i18n.js'
-import { GitHubIcon } from './GitHubIcon.js'
-
-/** 插件源码仓库地址(点击 GitHub 图标跳转)。 */
-const REPO_URL = 'https://github.com/Y1X1n/dsh-prompt-optimizer'
-
-/** 与 Host 侧 Config 对应的设置分节形状(仅客户端使用)。 */
-export interface OptimizerSettingsValue {
-  language?: 'zh' | 'en'
-  /** '' = 跟随当前会话;否则 'provider/model'。 */
-  model?: string
-  /** '' = 无回退;否则 'provider/model'。 */
-  fallbackModel?: string
-  maxTokens?: number
-  /** 单次优化调用的超时时间(秒)。 */
-  timeoutSeconds?: number
-  /** full = 分析 + 优化;fast = 仅优化(输出 token 约减半,等待更短)。 */
-  mode?: 'full' | 'fast'
-  /** session = 跟随会话;lowest = 钳到该模型支持的最低档(推理模型等待显著缩短)。 */
-  reasoningEffort?: 'session' | 'lowest'
-  /** 采样温度(0-2),默认 0.2。 */
-  temperature?: number
-  /** 输出上限跟随输入长度,默认 true。 */
-  autoMaxTokens?: boolean
-  /** 优化时携带会话近期对话作为上下文,默认 true。 */
-  includeContext?: boolean
-}
-
-/** 模型下拉的“跟随会话”取值。 */
-export const FOLLOW_SESSION = ''
 
 /**
- * 设置项的可写值:字面量类型字段(如 language: 'zh'|'en')同时接受任意 string,
- * 与下拉框 onChange 的 e.target.value 对齐(校验交给 Host 侧归一化,R27)。
+ * 设置卡(0.2.0 原生风格):注册为 `settings.plugins.tab` 的标签页,平铺行布局
+ * 与官方设置页同构 —— 行标题 14px、描述 12px 次级色、行间 0.5px 分隔线,
+ * 枚举项用官方 SegmentedControl 同款分段控件、布尔项用同款开关(样式取自
+ * dsh-client-ui-primitives 的对应 CSS,手写注入以保持跨版本零依赖)。
  */
+
+const STYLES_ID = 'dsh-prompt-optimizer-settings-styles'
+
+/**
+ * 注入设置卡的行/控件样式(幂等)。取值对齐官方 ui-settings-general 行样式与
+ * ui-primitives 的 SegmentedControl/Switch:分段控件 = 浅底轨道 + 选中白胶囊,
+ * 开关 = 36×20 胶囊 + 16px 圆形滑块,全部走 --dsw-* 令牌,明暗主题自动跟随。
+ */
+function ensureStyles(): void {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(STYLES_ID)) return
+  const style = document.createElement('style')
+  style.id = STYLES_ID
+  style.textContent = `
+.dsh-po-sec{display:flex;flex-direction:column;width:100%;color:var(--dsw-alias-label-primary)}
+.dsh-po-group{margin:14px 0 2px;padding:0;font-size:12px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.dsh-po-row{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:14px 0;border-bottom:0.5px solid var(--dsw-alias-border-l2)}
+.dsh-po-row:last-child{border-bottom:none}
+.dsh-po-rowText{min-width:0}
+.dsh-po-rowTitle{font-size:14px;line-height:20px}
+.dsh-po-rowDesc{margin-top:4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.dsh-po-hint{padding:10px 0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.dsh-po-status{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+/* 分段控件(官方 SegmentedControl 同款):浅底轨道 + 选中白胶囊滑动指示。 */
+.dsh-po-seg{position:relative;display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:4px;border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,0.14));flex:none}
+.dsh-po-segIndicator{position:absolute;top:4px;left:4px;width:calc((100% - 8px - 2px*(var(--dsh-segment-count) - 1))/var(--dsh-segment-count));height:calc(100% - 8px);border:0;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:var(--dsw-elevation-soft,0 1px 2px rgba(0,0,0,0.12));transform:translateX(calc(var(--dsh-segment-index)*(100% + 2px)));transition:transform 160ms ease;pointer-events:none}
+.dsh-po-segTab{box-sizing:border-box;position:relative;z-index:1;height:28px;padding:0 16px;border:0;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary,inherit);font:inherit;font-size:13px;line-height:20px;font-weight:500;white-space:nowrap;cursor:pointer;transition:color 120ms ease}
+.dsh-po-segTab:hover:not(:disabled),.dsh-po-segTab[aria-selected='true']{color:var(--dsw-alias-label-primary,inherit)}
+.dsh-po-segTab:disabled{cursor:default;opacity:0.4}
+/* 开关(官方 Switch 同款):36×20 胶囊轨道 + 16px 圆形滑块。 */
+.dsh-po-switch{box-sizing:border-box;position:relative;flex:0 0 auto;width:36px;height:20px;padding:2px;border:0;border-radius:999px;background:var(--dsw-alias-border-l3,rgba(128,128,128,0.4));cursor:pointer}
+.dsh-po-switch[aria-checked='true']{background:var(--dsw-alias-brand-primary,#4f7cf7)}
+.dsh-po-switch:disabled{cursor:default;opacity:0.5}
+.dsh-po-switchThumb{display:block;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-label-primary-foreground,#fff);transition:transform 120ms ease}
+.dsh-po-switch[aria-checked='false'] .dsh-po-switchThumb{background:var(--dsw-alias-switch-thumb,#fff)}
+.dsh-po-switch[aria-checked='true'] .dsh-po-switchThumb{transform:translateX(16px)}
+/* 行内控件:select / input / 次级按钮。 */
+.dsh-po-select{flex:none;max-width:280px;padding:5px 28px 5px 10px;font:inherit;font-size:13px;line-height:20px;border-radius:var(--dsw-radius-md,8px);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,0.35));background:var(--dsw-alias-bg-layer-1,transparent) no-repeat right 10px center/10px;appearance:none;color:var(--dsw-alias-label-primary,inherit);cursor:pointer}
+.dsh-po-input{flex:none;width:150px;padding:5px 10px;font:inherit;font-size:13px;line-height:20px;border-radius:var(--dsw-radius-md,8px);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,0.35));background:var(--dsw-alias-bg-layer-1,transparent);color:var(--dsw-alias-label-primary,inherit)}
+.dsh-po-input:focus-visible,.dsh-po-select:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#4f7cf7));outline-offset:1px}
+.dsh-po-btn2{flex:none;padding:5px 14px;font:inherit;font-size:13px;line-height:20px;border-radius:var(--dsw-radius-md,8px);border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,0.35));background:transparent;color:var(--dsw-alias-label-primary,inherit);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease}
+.dsh-po-btn2:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,0.14))}
+.dsh-po-btn2:disabled{opacity:0.45;cursor:default}
+.dsh-po-fieldError{font-size:12px;line-height:18px;color:var(--dsw-alias-state-error-primary,#e5534b)}
+/* 选中行控件的表单错误态(文本输入校验失败)。 */
+.dsh-po-input[data-invalid='true']{border-color:var(--dsw-alias-state-error-primary,#e5534b)}
+`
+  document.head.appendChild(style)
+}
+
+/** 设置项的可写值:字面量类型字段(如 language: 'zh'|'en')同时接受任意 string,与下拉/分段 onChange 对齐(校验交给 Host 侧归一化)。 */
 type WritableValue<K extends keyof OptimizerSettingsValue> =
   OptimizerSettingsValue[K] | (Extract<OptimizerSettingsValue[K], string> extends never ? never : string)
 
-const styles = {
-  card: {
-    border: '1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.3))',
-    borderRadius: 10,
-    padding: '14px 16px',
-    fontSize: 13,
-    lineHeight: 1.6,
-    color: 'var(--dsw-alias-label-primary, inherit)',
-    fontFamily: 'var(--dsw-font-family, inherit)',
-  } as const,
-  title: { fontSize: 14, fontWeight: 600 } as const,
-  desc: { color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))', marginBottom: 12 } as const,
-  headerBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    width: '100%',
-    padding: 0,
-    border: 'none',
-    background: 'none',
-    color: 'inherit',
-    font: 'inherit',
-    cursor: 'pointer',
-    textAlign: 'left',
-  } as const,
-  chevron: {
-    fontSize: 11,
-    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-    transition: 'transform 0.15s ease',
-  } as const,
-  headerDesc: {
-    marginLeft: 'auto',
-    fontSize: 12,
-    fontWeight: 400,
-    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-  } as const,
-  body: { marginTop: 12 } as const,
-  row: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 } as const,
-  label: { width: 110, flexShrink: 0, color: 'var(--dsw-alias-label-primary, inherit)' } as const,
-  input: {
-    flex: 1,
-    maxWidth: 320,
-    padding: '4px 8px',
-    fontSize: 13,
-    borderRadius: 6,
-    border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4))',
-    background: 'var(--dsw-alias-bg-layer-1, transparent)',
-    color: 'var(--dsw-alias-label-primary, inherit)',
-  } as const,
-  hint: { color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))', fontSize: 12 } as const,
-  // U13:分组小标题(模型 / 调用参数 / 上下文),带浅分隔线。
-  groupTitle: {
-    margin: '14px 0 8px',
-    paddingTop: 8,
-    borderTop: '1px solid var(--dsw-alias-border-l3, rgba(128,128,128,0.18))',
-    fontSize: 11,
-    fontWeight: 600,
-    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-  } as const,
-  fieldError: { color: 'var(--dsw-alias-state-error-primary, #e5534b)', fontSize: 12 } as const,
-  refreshBtn: {
-    flexShrink: 0,
-    padding: '4px 10px',
-    fontSize: 12,
-    borderRadius: 6,
-    border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4))',
-    background: 'var(--dsw-alias-button-tool-bar-fill, transparent)',
-    color: 'var(--dsw-alias-label-primary, inherit)',
-    cursor: 'pointer',
-  } as const,
-  // 标题右侧的 GitHub 仓库入口:点击在新标签打开仓库主页。
-  repoLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    marginLeft: 8,
-    padding: 4,
-    color: 'var(--dsw-alias-label-primary-dimmed, rgba(128,128,128,0.9))',
-    background: 'none',
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    textDecoration: 'none',
-  } as const,
+interface RowProps {
+  title: string
+  desc?: string
+  /** 控件区(行右侧)。 */
+  children: ReactNode
 }
 
-/** 文本输入:本地暂存,失焦或回车时校验并写入 Host 设置文档(U14:非法输入保留原样、红框提示,不静默擦除)。 */
+/** 官方样式的设置行:左侧标题+描述,右侧控件,行间细分隔线。 */
+function Row({ title, desc, children }: RowProps) {
+  return (
+    <div className="dsh-po-row">
+      <div className="dsh-po-rowText">
+        <div className="dsh-po-rowTitle">{title}</div>
+        {desc && <div className="dsh-po-rowDesc">{desc}</div>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** 分段控件:官方 SegmentedControl 同款(浅底轨道 + 选中白胶囊滑动指示)。 */
+function Segmented<T extends string>(props: {
+  value: T
+  options: readonly { value: T; label: string; title?: string }[]
+  onChange: (value: T) => void
+  label: string
+}) {
+  const selected = props.options.findIndex((o) => o.value === props.value)
+  return (
+    <span
+      className="dsh-po-seg"
+      role="tablist"
+      aria-label={props.label}
+      style={{ '--dsh-segment-count': props.options.length, '--dsh-segment-index': selected < 0 ? 0 : selected } as CSSProperties}
+    >
+      <span className="dsh-po-segIndicator" aria-hidden="true" />
+      {props.options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          className="dsh-po-segTab dsh-po-btn"
+          aria-selected={option.value === props.value}
+          title={option.title}
+          onClick={() => {
+            if (option.value !== props.value) props.onChange(option.value)
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </span>
+  )
+}
+
+/** 开关:官方 Switch 同款(胶囊轨道 + 圆形滑块,aria-checked 驱动外观)。 */
+function Toggle(props: { checked: boolean; onChange: (next: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="dsh-po-switch dsh-po-btn"
+      aria-checked={props.checked}
+      aria-label={props.label}
+      disabled={props.disabled}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="dsh-po-switchThumb" />
+    </button>
+  )
+}
+
+/**
+ * 文本输入:本地暂存,失焦或回车时校验并写入(U14:非法输入保留原样、红框提示,
+ * 不静默擦除)。走官方 Input 的边框/圆角令牌。
+ */
 function TextField(props: {
   label: string
-  /** U15:标签 hover 提示(说明该项的设计意图/默认值依据)。 */
+  /** 标题 hover 提示(说明该项的设计意图/默认值依据)。 */
   labelTitle?: string
   value: string
   placeholder?: string
+  width?: number
   /** 返回错误提示表示非法;返回 null 表示合法、可以提交。 */
   validate?: (value: string) => string | null
   onCommit: (value: string) => void
@@ -148,8 +163,6 @@ function TextField(props: {
     }
     const problem = props.validate?.(text) ?? null
     if (problem) {
-      // U14:校验失败保留用户输入(只标红 + 提示),可直接修正后再次提交;
-      // 生效值仍为 props.value,直到提交合法值。
       setError(problem)
       return
     }
@@ -157,13 +170,15 @@ function TextField(props: {
     props.onCommit(text)
   }
   return (
-    <div style={styles.row}>
-      <span style={styles.label} title={props.labelTitle}>{props.label}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flex: 'none' }}>
       <input
-        className="dsh-po-btn"
-        style={{ ...styles.input, ...(error ? { borderColor: 'var(--dsw-alias-state-error-primary, #e5534b)' } : {}) }}
+        className="dsh-po-input dsh-po-btn"
+        data-invalid={error ? 'true' : undefined}
+        style={props.width ? { width: props.width } : undefined}
         value={text}
         placeholder={props.placeholder}
+        aria-label={props.label}
+        title={props.labelTitle}
         onChange={(e) => {
           setText(e.target.value)
           setError(null)
@@ -173,22 +188,82 @@ function TextField(props: {
           if (e.key === 'Enter') commit()
         }}
       />
-      {error && <span style={styles.fieldError}>{error}</span>}
+      {error && <span className="dsh-po-fieldError">{error}</span>}
     </div>
   )
 }
 
-/** 设置页卡片:注册进 `settings.plugin.item`,读写自己的 settings 命名空间。 */
-export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<OptimizerSettingsValue>) {
+/** 模型选择下拉(含目录加载失败的重试按钮位)。 */
+function ModelSelect(props: {
+  label: string
+  value: string
+  groups: OptimizerModelGroup[] | null
+  catalogState: 'loading' | 'ready' | 'error'
+  catalogHint: string | null
+  noneLabel: string
+  onChange: (value: string) => void
+  onRefresh: () => void
+  refreshTitle: string
+  refreshLabel: string
+}) {
+  if (props.groups === null) {
+    return (
+      <span className="dsh-po-status" style={{ flex: 'none', maxWidth: 300, textAlign: 'right' }}>
+        {props.catalogState === 'error' ? '—' : '…'}
+        {props.catalogHint ? `(${props.catalogHint})` : ''}
+      </span>
+    )
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+      <select
+        className="dsh-po-select dsh-po-btn"
+        style={{ backgroundImage: catalogChevron() }}
+        value={props.value}
+        aria-label={props.label}
+        onChange={(e) => props.onChange(e.target.value)}
+      >
+        <option value="">{props.noneLabel}</option>
+        {props.groups.map((g) => (
+          <optgroup key={g.id} label={g.name}>
+            {g.models.map((m) => (
+              <option key={`${g.id}/${m.id}`} value={`${g.id}/${m.id}`}>
+                {m.name}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      <button className="dsh-po-btn2 dsh-po-btn" type="button" title={props.refreshTitle} onClick={props.onRefresh}>
+        {props.refreshLabel}
+      </button>
+    </span>
+  )
+}
+
+/** select 自定义箭头(数据 URI,颜色跟随 currentColor 不可行,取中性灰)。 */
+function catalogChevron(): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%23888" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+  return `url("data:image/svg+xml,${svg.replace(/"/g, "'")}")`
+}
+
+/**
+ * 设置卡:0.1.x 注册进 `settings.plugin.item`、0.2.0 注册为
+ * `settings.plugins.tab`(插件页的一个标签),读写走统一的 SettingsFace
+ * (0.1.x settingsScope / 0.2.0 configForms,见 settings-face.ts)。
+ */
+export function createSettingsCard(ctx: ClientContext, face: SettingsFace) {
+  ensureStyles()
   return function PromptOptimizerSettingsCard() {
     const snap = useSyncExternalStore(
-      (callback) => scope.subscribe(callback),
-      () => scope.getSnapshot(),
+      (callback) => face.subscribe(callback),
+      () => face.getSnapshot(),
     )
     const t = useT()
     const value = snap.value ?? {}
+    const writable = snap.writable !== false
 
-    // U16:撤销栈。scope.set 直接持久化、没有 undo;这里在卡片层保存最近 N 次
+    // U16:撤销栈。face.set 直接持久化、没有 undo;这里在卡片层保存最近 N 次
     // 修改前的整份快照,「撤销上一次修改」把变化的键整批还原。内存栈,仅本次
     // 页面会话有效(刷新即清);撤销本身的还原不再入栈。
     type SettingValueSnapshot = Partial<OptimizerSettingsValue>
@@ -210,7 +285,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
         if (undoStack.current.length > 20) undoStack.current.shift()
         setCanUndo(true)
       }
-      void scope.set(key, v as OptimizerSettingsValue[K])
+      void face.set(key, v as OptimizerSettingsValue[K])
     }
     const undoLastChange = () => {
       const prev = undoStack.current.pop()
@@ -222,7 +297,7 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
           // 快照里缺失的键按出厂默认还原(与设置项各自的 UI 缺省一致)。
           const target = prev[k] ?? SETTING_DEFAULTS[k]
           if (value[k] !== target) {
-            void (scope.set as (key: string, v: unknown) => Promise<void>)(k, target)
+            void face.set(k, target)
           }
         }
       } finally {
@@ -283,245 +358,161 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
       }
     }
 
-    // 卡片默认收起(设置项已较多),展开状态持久化到 localStorage。
-    const EXPAND_KEY = 'dsh-prompt-optimizer.settings-expanded'
-    const [expanded, setExpanded] = useState(() => {
-      try {
-        return localStorage.getItem(EXPAND_KEY) === '1'
-      } catch {
-        return false
-      }
-    })
-    const toggle = () =>
-      setExpanded((v) => {
-        const next = !v
-        try {
-          localStorage.setItem(EXPAND_KEY, next ? '1' : '0')
-        } catch {
-          // 隐私模式等场景下不可写,展开态仅本次有效。
-        }
-        return next
-      })
-
-    // U17:折叠态在标题右侧展示关键摘要(模型 · 模式);展开时回落到功能说明。
-    const pinnedModel = value.model?.trim()
-    let modelShort = pinnedModel
-    if (!pinnedModel) {
-      modelShort = t('settings.model.follow')
-    } else if (groups) {
-      const slash = pinnedModel.indexOf('/')
-      const g = slash > 0 ? groups.find((x) => x.id === pinnedModel.slice(0, slash)) : undefined
-      const m = g?.models.find((mm) => mm.id === pinnedModel.slice(slash + 1))
-      if (m) modelShort = m.name
-    }
-    const summaryText = `${t('settings.summary.model')}: ${modelShort} · ${t('settings.summary.mode')}: ${
-      value.mode === 'fast' ? t('settings.mode.fast.short') : t('settings.mode.full.short')
-    }`
-
     return (
-      <section style={styles.card}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-        <button className="dsh-po-btn" type="button" style={{ ...styles.headerBtn, flex: 1 }} onClick={toggle} aria-expanded={expanded}>
-          <span style={{ ...styles.chevron, transform: expanded ? 'rotate(90deg)' : 'none' }}>▸</span>
-          <span style={styles.title}>{t('panel.title')}</span>
-          <span style={styles.headerDesc}>{expanded ? t('settings.desc') : summaryText}</span>
-        </button>
-        <a
-          className="dsh-po-btn dsh-po-repo-link"
-          href={REPO_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.repoLink}
-          title={t('settings.repoTitle')}
-          aria-label={t('settings.repoTitle')}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <GitHubIcon size={16} />
-        </a>
-        </div>
-        {expanded && (
-          <div style={styles.body}>
-        {snap.status === 'loading' && <div style={styles.hint}>{t('settings.loading')}</div>}
-        {snap.status === 'unavailable' && (
-          <div style={styles.hint}>{t('settings.unavailable')}</div>
-        )}
+      <section className="dsh-po-sec">
+        {snap.status === 'loading' && <div className="dsh-po-hint">{t('settings.loading')}</div>}
+        {snap.status === 'unavailable' && <div className="dsh-po-hint">{t('settings.unavailable')}</div>}
+        {!writable && snap.status === 'ready' && <div className="dsh-po-hint">{t('settings.memoryOnly')}</div>}
 
-        {/* U13 分组一:模型 */}
-        <div style={styles.groupTitle}>{t('settings.group.model')}</div>
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.model')}</span>
-          {groups === null ? (
-            <span style={styles.hint}>
-              {catalogState === 'error' ? t('settings.catalog.error') : t('settings.catalog.loading')}
-              {catalogHint ? `(${catalogHint})` : ''}
-            </span>
-          ) : (
-            <select
-              style={styles.input}
-              value={value.model ?? FOLLOW_SESSION}
-              onChange={(e) => void setValue('model', e.target.value)}
-            >
-              <option value={FOLLOW_SESSION}>{t('settings.model.follow')}</option>
-              {groups.map((g) => (
-                <optgroup key={g.id} label={g.name}>
-                  {g.models.map((m) => (
-                    <option key={m.id} value={`${g.id}/${m.id}`}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
-          <button className="dsh-po-btn"
-            type="button"
-            style={{ ...styles.refreshBtn, ...(catalogState === 'loading' ? { opacity: 0.45, cursor: 'default' } : {}) }}
-            disabled={catalogState === 'loading'}
-            title={t('settings.refreshTitle')}
-            onClick={() => void loadCatalog()}
-          >
-            {t('settings.refresh')}
-          </button>
-        </div>
-
+        <div className="dsh-po-group">{t('settings.group.model')}</div>
+        <Row title={t('settings.model')} desc={t('settings.model.desc')}>
+          <ModelSelect
+            label={t('settings.model')}
+            value={value.model ?? ''}
+            groups={groups}
+            catalogState={catalogState}
+            catalogHint={catalogHint}
+            noneLabel={t('settings.model.follow')}
+            onChange={(v) => setValue('model', v)}
+            onRefresh={() => void loadCatalog()}
+            refreshTitle={t('settings.refreshTitle')}
+            refreshLabel={t('settings.refresh')}
+          />
+        </Row>
         {groups !== null && (
-          <div style={styles.row}>
-            <span style={styles.label}>{t('settings.fallbackModel')}</span>
+          <Row title={t('settings.fallbackModel')} desc={t('settings.fallbackModel.desc')}>
             <select
-              style={styles.input}
+              className="dsh-po-select dsh-po-btn"
+              style={{ backgroundImage: catalogChevron() }}
               value={value.fallbackModel ?? ''}
-              onChange={(e) => void setValue('fallbackModel', e.target.value)}
+              aria-label={t('settings.fallbackModel')}
+              onChange={(e) => setValue('fallbackModel', e.target.value)}
             >
               <option value="">{t('settings.fallbackModel.none')}</option>
               {groups.map((g) => (
                 <optgroup key={g.id} label={g.name}>
                   {g.models.map((m) => (
-                    <option key={m.id} value={`${g.id}/${m.id}`}>
+                    <option key={`${g.id}/${m.id}`} value={`${g.id}/${m.id}`}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
               ))}
             </select>
-          </div>
+          </Row>
         )}
+        <Row title={t('settings.test')} desc={t('settings.test.desc')}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+            {test.message && (
+              <span className="dsh-po-status" style={{ maxWidth: 280, color: test.status === 'fail' ? 'var(--dsw-alias-state-error-primary,#e5534b)' : undefined }}>
+                {test.message}
+              </span>
+            )}
+            <button
+              className="dsh-po-btn2 dsh-po-btn"
+              type="button"
+              disabled={test.status === 'testing'}
+              onClick={() => void runTest()}
+            >
+              {test.status === 'testing' ? t('settings.test.running') : t('settings.test.run')}
+            </button>
+          </span>
+        </Row>
 
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.test')}</span>
-          <button className="dsh-po-btn"
-            type="button"
-            style={{ ...styles.refreshBtn, ...(test.status === 'testing' ? { opacity: 0.45, cursor: 'default' } : {}) }}
-            disabled={test.status === 'testing'}
-            onClick={() => void runTest()}
-          >
-            {test.status === 'testing' ? t('settings.test.running') : t('settings.test.run')}
-          </button>
-          {test.message && (
-            <span style={test.status === 'fail' ? styles.fieldError : styles.hint}>{test.message}</span>
-          )}
-        </div>
-
-        {/* U13 分组二:调用参数 */}
-        <div style={styles.groupTitle}>{t('settings.group.params')}</div>
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.language')}</span>
-          <select
-            style={{ ...styles.input, maxWidth: 160 }}
+        <div className="dsh-po-group">{t('settings.group.params')}</div>
+        <Row title={t('settings.language')} desc={t('settings.language.desc')}>
+          <Segmented
+            label={t('settings.language')}
             value={value.language ?? 'zh'}
-            onChange={(e) => void setValue('language', e.target.value)}
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.mode')}</span>
-          <select
-            style={{ ...styles.input, maxWidth: 260 }}
+            options={[
+              { value: 'zh', label: '中文' },
+              { value: 'en', label: 'English' },
+            ]}
+            onChange={(v) => setValue('language', v as WritableValue<'language'>)}
+          />
+        </Row>
+        <Row title={t('settings.mode')} desc={t('settings.mode.desc')}>
+          <Segmented
+            label={t('settings.mode')}
             value={value.mode ?? 'full'}
-            onChange={(e) => void setValue('mode', e.target.value)}
-          >
-            <option value="full">{t('settings.mode.full')}</option>
-            <option value="fast">{t('settings.mode.fast')}</option>
-          </select>
-        </div>
-
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.effort')}</span>
-          <select
-            style={{ ...styles.input, maxWidth: 260 }}
+            options={[
+              { value: 'full', label: t('settings.mode.full.short'), title: t('settings.mode.full') },
+              { value: 'fast', label: t('settings.mode.fast.short'), title: t('settings.mode.fast') },
+            ]}
+            onChange={(v) => setValue('mode', v as WritableValue<'mode'>)}
+          />
+        </Row>
+        <Row title={t('settings.effort')} desc={t('settings.effort.desc')}>
+          <Segmented
+            label={t('settings.effort')}
             value={value.reasoningEffort ?? 'lowest'}
-            onChange={(e) => void setValue('reasoningEffort', e.target.value)}
-          >
-            <option value="lowest">{t('settings.effort.lowest')}</option>
-            <option value="session">{t('settings.effort.session')}</option>
-          </select>
-        </div>
+            options={[
+              { value: 'lowest', label: t('settings.effort.lowest.short'), title: t('settings.effort.lowest') },
+              { value: 'session', label: t('settings.effort.session.short'), title: t('settings.effort.session') },
+            ]}
+            onChange={(v) => setValue('reasoningEffort', v as WritableValue<'reasoningEffort'>)}
+          />
+        </Row>
+        <Row title={t('settings.maxTokens')} desc={t('settings.maxTokens.desc')}>
+          <TextField
+            label={t('settings.maxTokens')}
+            value={String(value.maxTokens ?? 8192)}
+            placeholder="8192"
+            validate={(v) => {
+              const n = Number.parseInt(v, 10)
+              return Number.isFinite(n) && n >= 1024 && n <= 32768 ? null : t('settings.validate.maxTokens')
+            }}
+            onCommit={(v) => setValue('maxTokens', Number.parseInt(v, 10))}
+          />
+        </Row>
+        <Row title={t('settings.timeout')} desc={t('settings.timeout.desc')}>
+          <TextField
+            label={t('settings.timeout')}
+            value={String(value.timeoutSeconds ?? 120)}
+            placeholder="120"
+            validate={(v) => {
+              const n = Number.parseInt(v, 10)
+              return Number.isFinite(n) && n >= 10 && n <= 600 ? null : t('settings.validate.timeout')
+            }}
+            onCommit={(v) => setValue('timeoutSeconds', Number.parseInt(v, 10))}
+          />
+        </Row>
+        <Row title={t('settings.temperature')} desc={t('settings.temperature.desc')} >
+          <TextField
+            label={t('settings.temperature')}
+            labelTitle={t('settings.temperatureTitle')}
+            value={String(value.temperature ?? 0.2)}
+            placeholder="0.2"
+            width={100}
+            validate={(v) => {
+              const n = Number.parseFloat(v)
+              return Number.isFinite(n) && n >= 0 && n <= 2 ? null : t('settings.validate.temperature')
+            }}
+            onCommit={(v) => setValue('temperature', Number.parseFloat(v))}
+          />
+        </Row>
 
-        {/* U13 分组三:上下文 */}
-        <div style={styles.groupTitle}>{t('settings.group.context')}</div>
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.includeContext')}</span>
-          <select
-            style={{ ...styles.input, maxWidth: 260 }}
-            value={value.includeContext === false ? 'off' : 'on'}
-            onChange={(e) => void setValue('includeContext', e.target.value === 'on')}
-          >
-            <option value="on">{t('settings.includeContext.on')}</option>
-            <option value="off">{t('settings.includeContext.off')}</option>
-          </select>
-        </div>
+        <div className="dsh-po-group">{t('settings.group.context')}</div>
+        <Row title={t('settings.includeContext')} desc={t('settings.includeContext.desc')}>
+          <Toggle
+            label={t('settings.includeContext')}
+            checked={value.includeContext !== false}
+            onChange={(next) => setValue('includeContext', next)}
+          />
+        </Row>
+        <Row title={t('settings.autoMaxTokens')} desc={t('settings.autoMaxTokens.desc')}>
+          <Toggle
+            label={t('settings.autoMaxTokens')}
+            checked={value.autoMaxTokens !== false}
+            onChange={(next) => setValue('autoMaxTokens', next)}
+          />
+        </Row>
 
-        <TextField
-          label={t('settings.maxTokens')}
-          value={String(value.maxTokens ?? 8192)}
-          placeholder="8192"
-          validate={(v) => {
-            const n = Number.parseInt(v, 10)
-            return Number.isFinite(n) && n >= 1024 && n <= 32768 ? null : t('settings.validate.maxTokens')
-          }}
-          onCommit={(v) => void setValue('maxTokens', Number.parseInt(v, 10))}
-        />
-        <TextField
-          label={t('settings.timeout')}
-          value={String(value.timeoutSeconds ?? 120)}
-          placeholder="120"
-          validate={(v) => {
-            const n = Number.parseInt(v, 10)
-            return Number.isFinite(n) && n >= 10 && n <= 600 ? null : t('settings.validate.timeout')
-          }}
-          onCommit={(v) => void setValue('timeoutSeconds', Number.parseInt(v, 10))}
-        />
-        <TextField
-          label={t('settings.temperature')}
-          labelTitle={t('settings.temperatureTitle')}
-          value={String(value.temperature ?? 0.2)}
-          placeholder="0.2"
-          validate={(v) => {
-            const n = Number.parseFloat(v)
-            return Number.isFinite(n) && n >= 0 && n <= 2 ? null : t('settings.validate.temperature')
-          }}
-          onCommit={(v) => void setValue('temperature', Number.parseFloat(v))}
-        />
-
-        <div style={styles.row}>
-          <span style={styles.label}>{t('settings.autoMaxTokens')}</span>
-          <select
-            style={{ ...styles.input, maxWidth: 260 }}
-            value={value.autoMaxTokens === false ? 'off' : 'on'}
-            onChange={(e) => void setValue('autoMaxTokens', e.target.value === 'on')}
-          >
-            <option value="on">{t('settings.autoMaxTokens.on')}</option>
-            <option value="off">{t('settings.autoMaxTokens.off')}</option>
-          </select>
-        </div>
         {/* U16:撤销最近一次设置修改(内存栈,刷新即清)。 */}
-        <div style={styles.row}>
+        <div className="dsh-po-row" style={{ paddingBottom: 4 }}>
           <button
-            className="dsh-po-btn"
+            className="dsh-po-btn2 dsh-po-btn"
             type="button"
-            style={{ ...styles.refreshBtn, ...(!canUndo ? { opacity: 0.45, cursor: 'default' } : {}) }}
             disabled={!canUndo}
             title={t('settings.undoTitle')}
             onClick={undoLastChange}
@@ -529,11 +520,6 @@ export function createSettingsCard(ctx: ClientContext, scope: SettingsScope<Opti
             {t('settings.undo')}
           </button>
         </div>
-        {!snap.writable && snap.status === 'ready' && (
-          <div style={styles.hint}>{t('settings.memoryOnly')}</div>
-        )}
-          </div>
-        )}
       </section>
     )
   }

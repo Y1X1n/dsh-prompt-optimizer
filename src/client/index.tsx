@@ -1,20 +1,18 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-// 类型级引入,激活目标槽位的 SlotMap 合并声明,以及 ctx.slots / ctx.settingsScope
-// 的 Context 合并(slots 由 ui-renderer 声明,settingsScope 由 ui-settings 声明)。
+// 类型级引入,激活目标槽位的 SlotMap 合并声明,以及 ctx.slots / ctx.configForms
+// 的 Context 合并(slots 由 ui-renderer 声明,configForms 由 ui-settings 声明)。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { createOptimizeButton } from './OptimizeButton.js'
 import { createResultDock } from './ResultDock.js'
-import { createSettingsCard, type OptimizerSettingsValue } from './SettingsCard.js'
+import { createSettingsCard } from './SettingsCard.js'
 import { createOptimizerController } from './controller.js'
-import { installLocaleFace, type LocaleFace } from './i18n.js'
 import type { ModelDirectoriesLike } from './host-faces.js'
+import { installLocaleFace, type LocaleFace, translate } from './i18n.js'
+import { createSettingsFace } from './settings-face.js'
 // connection 的客户端 Context 合并发布版不带,这里按实际形状补齐。
-// settingsScope 的合并不能在这里重复声明:0.1.2 起改由
-// @deepseek-ai/dsh-client-ui-settings/client 自行声明(SettingsScopeBinder),
-// 再声明一次会与上游的合并声明类型不一致而报 duplicate。
 declare module '@deepseek-ai/cordis' {
   interface Context {
     connection: ConnectionHandle
@@ -22,11 +20,16 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export const name = 'dsh-prompt-optimizer-client'
-// settingsScope 的绑定内部依赖 connection(读写传输)与 remote(失效通知)。
-export const inject = ['slots', 'connection', 'remote', 'settingsScope']
+// 主注入只依赖 0.1.x/0.2.0 都存在的服务。settingsScope 在 0.2.0 被移除、
+// configForms 在 0.1.x 不存在:两个设置后端都走下方**可选**注入,不能并进
+// 主 inject,否则任一代宿主上都会有一半插件永远等不到就绪。
+export const inject = ['slots', 'connection', 'remote']
 
 /** 本插件交互元素的公共类名(U11:focus-visible 焦点环走这一份注入的样式)。 */
 export const BUTTON_CLASS = 'dsh-po-btn'
+
+/** 设置命名空间 = 组合行 entry id(与 cordis.patch.yml 的 insert id 一致)。 */
+const SETTINGS_ENTRY_ID = 'prompt-optimizer'
 
 /**
  * U11:键盘可达性。inline style 表达不了 :focus-visible 伪类,注入一段全局样式
@@ -68,7 +71,21 @@ export function apply(ctx: ClientContext): void {
     modelDirectories = (mctx as unknown as { modelDirectories?: ModelDirectoriesLike }).modelDirectories
   })
 
-  const scope = ctx.settingsScope.bind<OptimizerSettingsValue>({ namespace: 'prompt-optimizer' })
+  // 设置面:0.2.0 走 configForms(命名空间 = entry id),0.1.x 走 settingsScope。
+  // 谁先到谁生效;都没到时快照为 loading,controller 的判定函数按缺省口径工作。
+  const settings = createSettingsFace()
+  ctx.inject(['configForms'], (cctx) => {
+    const forms = (cctx as unknown as { configForms?: Parameters<typeof settings.attachForms>[0] }).configForms
+    if (forms) settings.attachForms(forms, SETTINGS_ENTRY_ID)
+  })
+  ctx.inject(['settingsScope'], (sctx) => {
+    const binder = (sctx as unknown as {
+      settingsScope?: { bind(opts: { namespace: string }): unknown }
+    }).settingsScope
+    if (binder) settings.attachLegacy(binder.bind({ namespace: SETTINGS_ENTRY_ID }) as Parameters<typeof settings.attachLegacy>[0])
+  })
+
+  const scope = { getSnapshot: () => settings.face.getSnapshot() }
   const controller = createOptimizerController(ctx, {
     // 与 Host 侧「空字符串视为未设置」的口径一致。
     isModelPinned: () => Boolean(scope.getSnapshot().value?.model?.trim()),
@@ -84,9 +101,8 @@ export function apply(ctx: ClientContext): void {
 
   // 发送栏按钮与结果面板。0.1.2 起 conversation.input.* 槽位是 session scope,
   // 采用与官方 ui-model-selection 一致的双层形态 —— 注入回调内 scope 化注册,
-  // 并携带 0.1.2 渲染端使用的 inject(sessionId) 钩子;旧版(0.1.0-rc.x /
-  // 0.1.1-rc.x)忽略未知字段、注册时机仅推迟到服务就绪,行为不变。
-  ctx.inject(['slots', 'connection', 'remote', 'settingsScope'], (scopeCtx) => {
+  // 并携带渲染端使用的 inject(sessionId) 钩子;0.2.0 的槽位声明与该形态一致。
+  ctx.inject(['slots', 'connection', 'remote'], (scopeCtx) => {
     scopeCtx.slots.inject('conversation.input.right', () =>
       scopeCtx.slots.register(
         {
@@ -111,12 +127,43 @@ export function apply(ctx: ClientContext): void {
     )
   })
 
-  // 设置 → 插件配置:本插件的配置卡片(keyed 槽位,key = 设置命名空间)。
-  // settings.plugin.item 非 session scope,沿用声明式挂载。
-  ctx.slots.inject('settings.plugin.item', () =>
-    ctx.slots.register(
-      { name: 'settings.plugin.item', key: 'prompt-optimizer' },
-      createSettingsCard(ctx, scope),
-    ),
-  )
+  // 设置入口,双槽位并挂,各自宿主只声明/渲染自己认识的那一个:
+  //  - 0.1.x:settings.plugin.item(keyed 槽位,key = 设置命名空间);
+  //  - 0.2.0:settings.plugins.tab(插件设置页的标签页,id + order + label;
+  //    仅一个第三方标签时官方组件直接整页展示)。
+  // 槽位的 inject 回调只在**宿主声明了该槽位**时触发,因此任一代宿主上恰好
+  // 挂载一次;两个名字都未声明时这里完全不动。未声明槽位上的注册静默存在、
+  // 不渲染,无副作用。
+  let settingsDisposers: (() => void)[] | null = null
+  const mountSettingsCard = (slotCtx: ClientContext): (() => void) => {
+    const unmount = () => {
+      for (const dispose of settingsDisposers ?? []) dispose()
+      settingsDisposers = null
+    }
+    if (settingsDisposers) return unmount
+    const card = createSettingsCard(slotCtx, settings.face)
+    const slots = slotCtx.slots as unknown as {
+      register(options: Record<string, unknown>, component: unknown): () => void
+    }
+    // 两个槽位的注册都走结构面:0.1.x 的 settings.plugin.item 与 0.2.0 的
+    // settings.plugins.tab 互不在对方宿主的 SlotMap 声明里。
+    settingsDisposers = [
+      slots.register(
+        {
+          name: 'settings.plugins.tab',
+          id: SETTINGS_ENTRY_ID,
+          order: 30,
+          label: () => translate('panel.title'),
+          inject: () => ({}),
+        },
+        card,
+      ),
+      slots.register({ name: 'settings.plugin.item', key: SETTINGS_ENTRY_ID }, card),
+    ]
+    return unmount
+  }
+  // 槽位的 inject 回调只在宿主声明了该槽位时触发:任一代宿主上恰好挂载一次。
+  const slotsAny = ctx.slots as unknown as { inject(name: string, register: () => unknown): void }
+  slotsAny.inject('settings.plugin.item', () => mountSettingsCard(ctx))
+  slotsAny.inject('settings.plugins.tab', () => mountSettingsCard(ctx))
 }
