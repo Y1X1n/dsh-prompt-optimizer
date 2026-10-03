@@ -286,7 +286,10 @@ export function createOptimizerController(
       const resp = await fetch(ROUTE, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: draft, provider: selection?.provider, model: selection?.model, reasoningEffort: selection?.reasoningEffort, context, previous }),
+        // sessionId 随请求带给 Host:Host 把它标注到 llm 调用上,要求会话头
+        // 的提供方(如 opencode 的 x-opencode-session)才能路由成功,同时
+        // 会话级计量会把这次调用归属到当前会话。
+        body: JSON.stringify({ text: draft, sessionId, provider: selection?.provider, model: selection?.model, reasoningEffort: selection?.reasoningEffort, context, previous }),
         signal: controller.signal,
       })
       // 预校验失败(400/405/409/413/502)仍是普通 JSON;成功则进入 SSE 流。
