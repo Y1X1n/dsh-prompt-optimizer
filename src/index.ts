@@ -108,6 +108,8 @@ function warnUnknownEnumConfig(cfg: Config): void {
 
 interface OptimizeRequestBody {
   text?: unknown
+  /** 发起优化的会话 id:标注到 llm 调用上(opencode 等提供方要求会话头才能路由)。 */
+  sessionId?: unknown
   provider?: unknown
   model?: unknown
   reasoningEffort?: unknown
@@ -437,6 +439,8 @@ export function apply(ctx: Context, config: Config) {
         const body = await readBodyOrReply(req, res)
         if (!body) return
         const text = asOptionalString(body.text)
+        // 客户端带来的会话 id(发起优化的会话),标注到 llm 调用(见 options 组装处)。
+        const sessionHint = asOptionalString(body.sessionId)
         if (!text) {
           writeJson(res, 400, { ok: false, error: '提示词内容为空' })
           return
@@ -534,6 +538,11 @@ export function apply(ctx: Context, config: Config) {
                 maxTokens,
                 temperature: cfg.temperature ?? 0.2,
                 signal: abort.signal,
+                // 会话标注:opencode 等提供方要求会话头(x-opencode-session,
+                // 由 pi-ai 适配器按 GenerateOptions.sessionId 注入),缺失会被
+                // API 以「缺少请求头」拒绝;其余适配器仅作模型不可见的传输
+                // 元数据处理,不外发。缺省(无会话来源)不标注。
+                ...(sessionHint ? { sessionId: sessionHint as GenerateOptions['sessionId'] } : {}),
               }
               let effort = sessionEffort
               if (!preferSessionEffort) {
@@ -633,7 +642,17 @@ export function apply(ctx: Context, config: Config) {
         source: { kind: 'plugin', plugin: name },
       } as unknown as Message
       const result = await collectText(
-        ctx.llm.stream({ provider: route.provider, model: route.model, messages: [message], maxTokens: 32, signal: abort.signal }),
+        ctx.llm.stream({
+          provider: route.provider,
+          model: route.model,
+          messages: [message],
+          maxTokens: 32,
+          signal: abort.signal,
+          // 探活没有真实会话,标注一个固定合成 id:opencode 等提供方要求
+          // 会话头(x-opencode-session,适配器按 sessionId 注入),缺失会被
+          // API 以「缺少请求头」拒绝;固定值让探活稳定路由到同一桶。
+          sessionId: 'prompt-optimizer-connectivity-test' as GenerateOptions['sessionId'],
+        }),
       )
       writeJson(res, 200, {
         ok: true,
