@@ -63,6 +63,12 @@ dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<版本号>.tgz
 
 > 也可以直接从 npm 装:`dsh plugin --profile web add @y1x1n/dsh-prompt-optimizer`(装完同样要重启)。
 
+> **用官方桌面端(DeepSeek Harness 桌面应用)?** 装法不一样:桌面应用先启动一次让它初始化,然后**完全退出应用**,用应用自带的 dsh 命令安装,再重新打开应用。Windows 自带命令在 `E:\Deepseek-Harness\resources\runtime\cli\bin\dsh.cmd`(macOS/Linux 在应用安装目录里找),命令形如:
+>
+> ```sh
+> dsh plugin --profile desktop add ./y1x1n-dsh-prompt-optimizer-<版本号>.tgz
+> ```
+
 ---
 
 ## 怎么用
@@ -78,7 +84,7 @@ dsh plugin --profile web add ./y1x1n-dsh-prompt-optimizer-<版本号>.tgz
 
 ### 几个实用小开关(可选)
 
-在 设置 → 插件配置 → 「提示词优化」里:
+在设置的「内置插件」页 → 「提示词优化」里(旧版 dsh 在 设置 → 插件配置):
 
 - **嫌等待久?** 把「优化模式」切到 **快速**,等待时间约减半
 - **想固定用某个模型优化?** 「优化用模型」里选一个,不选就跟随当前会话
