@@ -224,13 +224,34 @@ export function buildUserPayload(draft: string, language: OutputLanguage, contex
 /**
  * 粗略估算文本 token 数(不依赖分词器):CJK 表意文字约 1 字 1 token,
  * 其余字符(拉丁文/数字/标点/代码)约 4 字符 1 token。用于让输出上限跟随输入长度。
+ *
+ * 覆盖范围要够宽:CJK 统一表意文字及其扩展 A–F、日文假名(含半角)、韩文谚文、
+ * CJK 兼容区与全角形式都按 1 字 1 token。漏掉哪一段,对应语言的长草稿就会被
+ * 低估到 1/4,`autoMaxTokens` 抬升不足而截断。
  */
+function isWideTokenChar(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x11ff) || // 谚文字母
+    (code >= 0x2e80 && code <= 0x2fdf) || // CJK 部首补充 / 康熙部首
+    (code >= 0x3000 && code <= 0x303f) || // CJK 符号与标点(全角)
+    (code >= 0x3040 && code <= 0x30ff) || // 平假名 / 片假名
+    (code >= 0x3130 && code <= 0x318f) || // 谚文兼容字母
+    (code >= 0x3400 && code <= 0x4dbf) || // CJK 扩展 A
+    (code >= 0x4e00 && code <= 0x9fff) || // CJK 统一表意文字
+    (code >= 0xa960 && code <= 0xa97f) || // 谚文字母扩展 A
+    (code >= 0xac00 && code <= 0xd7af) || // 谚文音节
+    (code >= 0xf900 && code <= 0xfaff) || // CJK 兼容表意文字
+    (code >= 0xff00 && code <= 0xff60) || // 全角 ASCII 变体
+    (code >= 0xffe0 && code <= 0xffe6) || // 全角符号
+    (code >= 0x20000 && code <= 0x3ffff) // CJK 扩展 B–F
+  )
+}
+
 export function estimateTokens(text: string): number {
   let cjk = 0
   let other = 0
   for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0
-    if ((code >= 0x3400 && code <= 0x4dbf) || (code >= 0x4e00 && code <= 0x9fff) || (code >= 0xf900 && code <= 0xfaff)) {
+    if (isWideTokenChar(ch.codePointAt(0) ?? 0)) {
       cjk += 1
     } else {
       other += 1
@@ -295,17 +316,23 @@ const THINK_OPEN = '<think>'
 const THINK_CLOSE = '</think>'
 
 /**
- * 剥离已闭合的 `<think>…</think>` 思考块(推理模型会把推理过程当正文输出,
+ * 剥离 `<think>…</think>` 思考块(推理模型会把推理过程当正文输出,
  * 且思考里常复述 `<<<OPTIMIZED>>>…<<<END>>>` 标记字样,干扰标记解析)。
+ *
+ * 未闭合的 `<think>` 同样丢弃其后全部内容:流在思考中途被截断(max-tokens /
+ * 断连)时,标记后的正文并不存在,残留的思考文本里却常带有复述的标记——
+ * 保留它会让「最后一组标记」锚定到推理碎片上,把推理内容当优化结果交付。
  */
 export function stripThinkBlocks(text: string): string {
   let out = ''
   let rest = text
   for (;;) {
     const open = rest.indexOf(THINK_OPEN)
-    const close = open === -1 ? -1 : rest.indexOf(THINK_CLOSE, open + THINK_OPEN.length)
-    if (open === -1 || close === -1) return out + rest
+    if (open === -1) return out + rest
     out += rest.slice(0, open)
+    const close = rest.indexOf(THINK_CLOSE, open + THINK_OPEN.length)
+    // 未闭合:思考块一直延伸到结尾,后面没有真实输出。
+    if (close === -1) return out
     rest = rest.slice(close + THINK_CLOSE.length)
   }
 }
@@ -383,13 +410,18 @@ export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'):
   const wellFormed = mode === 'fast' ? true : Boolean(a && o)
 
   if (!a && !o) {
-    return { analysis: '', optimized: text, wellFormed }
+    // 无标记:整段即结果。但空结果不算合规(截断到只剩思考块时会走到这里),
+    // 否则 fast 模式会把「什么都没产出」当成正常结果展示。
+    return { analysis: '', optimized: text, wellFormed: wellFormed && Boolean(text) }
   }
   const optimized = o ? segmentAfter(text, o) : ''
+  const analysis = a ? segmentAfter(text, a) : ''
   return {
-    analysis: a ? segmentAfter(text, a) : '',
-    optimized: optimized || text,
-    wellFormed,
+    // 有标记但段落为空:保持为空(可能只是模型没写内容),绝不回退到含标记的原文。
+    analysis,
+    optimized,
+    // 优化稿为空 = 这次输出不可用,降级展示并让客户端弹格式警示。
+    wellFormed: wellFormed && Boolean(optimized),
   }
 }
 
@@ -400,10 +432,8 @@ export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'):
  * 思考块同样剥离;流式里尚未闭合的 `<think>` 视为思考中,该段暂不显示。
  */
 export function parsePartialOptimizerOutput(raw: string): { analysis: string; optimized: string } {
-  let text = stripThinkBlocks(raw)
-  const lastOpen = text.lastIndexOf(THINK_OPEN)
-  const lastClose = text.lastIndexOf(THINK_CLOSE)
-  if (lastOpen > lastClose) text = text.slice(0, lastOpen)
+  // 未闭合的 <think> 由 stripThinkBlocks 一并丢弃(思考中不产出预览)。
+  const text = stripThinkBlocks(raw)
   const o = findLastMarker(text, 'OPTIMIZED')
   const a = findLastMarker(text, 'ANALYSIS')
   return {

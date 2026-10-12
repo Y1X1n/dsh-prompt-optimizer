@@ -640,4 +640,63 @@ const DONE = {
   console.log('✓ c22 新顺序流式预览与压缩兜底')
 }
 
+// c23. 回归:单个损坏的 SSE 帧被跳过,不毁掉整次优化(已收到的内容照常完成)
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () =>
+      new Response(
+        new ReadableStream({
+          start(ctrl) {
+            ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ type: 'delta', text: '<<<OPTIMIZED>>>\n部分内容' })}\n\n`))
+            ctrl.enqueue(enc.encode('data: {oops-not-json\n\n')) // 截断/损坏帧
+            ctrl.enqueue(enc.encode('data: not json at all\n\n'))
+            ctrl.enqueue(enc.encode(`data: ${JSON.stringify(DONE)}\n\n`))
+            ctrl.close()
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      ),
+    async () => {
+      await c.optimize('草稿', 's1')
+      const s = c.getSnapshot()
+      assert.equal(s.status, 'done', '坏帧应被跳过,而非把整次优化落为 error')
+      assert.equal(s.result.optimized, '优化后的提示词')
+    },
+  )
+  console.log('✓ c23 损坏 SSE 帧被跳过')
+}
+
+// c24. 回归:retry 必须拼回斜杠命令前缀(last.text 只存正文),否则
+//      「重新优化」与随后的「替换输入框」都会丢掉命令词
+{
+  const { ctx } = makeCtx()
+  const c = createOptimizerController(ctx)
+  await withFetch(
+    () => sseResponse([DONE]),
+    async (calls) => {
+      await c.optimize('/goal 帮我写个请假条', 's1')
+      assert.equal(calls[0].body.text, '帮我写个请假条', '首次发送只发正文')
+      c.retry()
+      await sleep(10)
+      assert.equal(calls[1].body.text, '帮我写个请假条', 'retry 应重新拆出正文')
+      assert.equal(c.getSnapshot().last.prefix, '/goal', 'retry 后前缀必须仍在,供替换时拼回')
+      // 替换输入框写入的内容 = 前缀 + 优化稿
+      assert.equal(
+        `${c.getSnapshot().last.prefix} ${c.getSnapshot().result.optimized}`,
+        '/goal 优化后的提示词',
+        '替换必须保留命令前缀',
+      )
+      // 普通文本 retry 不受影响
+      await c.optimize('普通草稿', 's2')
+      c.retry()
+      await sleep(10)
+      assert.equal(calls[3].body.text, '普通草稿')
+      assert.equal(c.getSnapshot().last.prefix, undefined)
+    },
+  )
+  console.log('✓ c24 retry 保留斜杠前缀')
+}
+
 console.log('\ncontroller: all passed')

@@ -241,9 +241,10 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   assert.equal(full.analysis, '真分析')
   assert.equal(full.optimized, '真结果')
   assert.equal(full.wellFormed, true)
-  // 纯剥离工具:完整块移除、未闭合块保留
+  // 纯剥离工具:完整块移除;未闭合块丢弃其后全部内容(流在思考中途被截断时,
+  // 标记后的正文并不存在,残留思考里的复述标记会污染解析)
   assert.equal(stripThinkBlocks('a<think>x</think>b<think>y</think>c'), 'abc')
-  assert.equal(stripThinkBlocks('a<think>未闭合'), 'a<think>未闭合')
+  assert.equal(stripThinkBlocks('a<think>未闭合'), 'a', '未闭合思考块应丢弃其后内容')
   console.log('✓ p14 思考块剥离与多组标记取最后')
 }
 
@@ -337,6 +338,69 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   assert.equal(grown.analysis, '分析到一半,继续分析')
   assert.equal(grown.optimized, '', '压缩缓冲不再携带优化稿,由冻结字段兜底')
   console.log('✓ p20 新顺序两段式压缩')
+}
+
+// p21 回归:OPTIMIZED 段落为空时不得回退到含标记的原文(否则用户会把
+//     `<<<OPTIMIZED>>>` 脚手架当成结果替换进输入框,且 wellFormed 还报 true)
+{
+  const emptyFirst = parseOptimizerOutput('<<<OPTIMIZED>>>\n<<<ANALYSIS>>>\n目标清晰度 | 模糊 | 明确产出\n<<<END>>>', 'full')
+  assert.equal(emptyFirst.optimized, '', '空 OPTIMIZED 段必须保持为空')
+  assert.equal(emptyFirst.wellFormed, false, '空优化稿应判格式退化,弹出警示')
+  assert.equal(emptyFirst.analysis, '目标清晰度 | 模糊 | 明确产出', '分析段照常解析')
+  assert.ok(!emptyFirst.optimized.includes('<<<'), '结果中不得残留标记')
+
+  const onlyEnd = parseOptimizerOutput('<<<OPTIMIZED>>>\n<<<END>>>', 'full')
+  assert.equal(onlyEnd.optimized, '')
+  assert.equal(onlyEnd.wellFormed, false)
+
+  const blank = parseOptimizerOutput('<<<OPTIMIZED>>>\n   \n<<<END>>>', 'full')
+  assert.equal(blank.optimized, '', '纯空白段落同样视为空')
+
+  // 无标记时整段仍是结果(唯一允许的兜底),非空即合规
+  const markerless = parseOptimizerOutput('直接输出的优化稿', 'fast')
+  assert.equal(markerless.optimized, '直接输出的优化稿')
+  assert.equal(markerless.wellFormed, true)
+
+  // 完全空输出(如截断到只剩思考块)不得判合规
+  const empty = parseOptimizerOutput('<think>被截断的推理', 'fast')
+  assert.equal(empty.optimized, '')
+  assert.equal(empty.wellFormed, false, '空结果不算合规')
+
+  // 正常输出不受影响
+  const ok = parseOptimizerOutput('<<<OPTIMIZED>>>\n正文\n<<<ANALYSIS>>>\n分析\n<<<END>>>', 'full')
+  assert.equal(ok.optimized, '正文')
+  assert.equal(ok.analysis, '分析')
+  assert.equal(ok.wellFormed, true)
+  console.log('✓ p21 空 OPTIMIZED 段不回退到原文')
+}
+
+// p22 回归:未闭合 <think>(流在思考中途被截断)时,思考里复述的标记不得
+//     被当作真实段落——否则推理碎片会被当优化结果交付
+{
+  const truncated = parseOptimizerOutput('<think>\n我应输出 <<<OPTIMIZED>>>\n思考里的假结果\n<<<END>>>\n再想想...', 'fast')
+  assert.equal(truncated.optimized, '', '未闭合思考块里的标记不得当结果')
+  assert.equal(truncated.wellFormed, false, '未产出真实结果应判退化')
+
+  // 闭合思考块后的真实段落仍然正确解析
+  const closed = parseOptimizerOutput('<think>假 <<<OPTIMIZED>>> 碎片 <<<END>>></think>\n<<<OPTIMIZED>>>\n真结果\n<<<END>>>', 'fast')
+  assert.equal(closed.optimized, '真结果')
+
+  // 流式预览同样不受未闭合思考块污染
+  assert.deepEqual(parsePartialOptimizerOutput('<think>推理中 <<<OPTIMIZED>>> 假'), { analysis: '', optimized: '' })
+  console.log('✓ p22 未闭合思考块不污染解析')
+}
+
+// p23 回归:CJK 覆盖假名/谚文/扩展 B/全角标点,否则日韩长草稿的
+//     autoMaxTokens 会低估 4 倍而截断
+{
+  assert.equal(estimateTokens('ひ'.repeat(100)), 100, '平假名应按 1 字 1 token')
+  assert.equal(estimateTokens('カ'.repeat(100)), 100, '片假名应按 1 字 1 token')
+  assert.equal(estimateTokens('한'.repeat(100)), 100, '谚文音节应按 1 字 1 token')
+  assert.equal(estimateTokens('\u{20000}'.repeat(100)), 100, 'CJK 扩展 B 应按 1 字 1 token')
+  assert.equal(estimateTokens('、'.repeat(100)), 100, '全角标点应按 1 字 1 token')
+  assert.equal(estimateTokens('汉'.repeat(100)), 100, '汉字行为不变')
+  assert.equal(estimateTokens('a'.repeat(100)), 25, '拉丁文仍按 4 字符 1 token')
+  console.log('✓ p23 token 估算 CJK 覆盖')
 }
 
 console.log('\nprompt: all passed')

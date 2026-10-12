@@ -52,6 +52,14 @@ export function splitCommandPrefix(text: string): { prefix?: string; body: strin
 }
 
 /**
+ * 把 `last` 里拆分存储的「前缀 + 正文」拼回完整输入(retry 复用路径)。
+ * 前缀与正文之间用单个空格分隔,与 splitCommandPrefix 的识别形状一致。
+ */
+export function joinLast(last: { text: string; prefix?: string }): string {
+  return last.prefix ? `${last.prefix} ${last.text}` : last.text
+}
+
+/**
  * 发送即关闭面板的判定(纯函数,便于测试)。三条信号任一命中即认为消息已发出:
  * 草稿被清空(直发/入队都会清,用户手动清空同理——面板引用的草稿已不存在)、
  * 会话开始运行(直发)、队列变长(忙时入队)。
@@ -319,7 +327,14 @@ export function createOptimizerController(
           buffer = buffer.slice(sep + 2)
           const line = frame.split('\n').find((l) => l.startsWith('data:'))
           if (!line) continue
-          const event = JSON.parse(line.slice(5).trim()) as Record<string, unknown>
+          // 单帧损坏(代理截断/编码异常)不得毁掉整次优化:跳过并告警,继续读流。
+          let event: Record<string, unknown>
+          try {
+            event = JSON.parse(line.slice(5).trim()) as Record<string, unknown>
+          } catch {
+            console.warn('[dsh-prompt-optimizer] 跳过无法解析的 SSE 帧:', line.slice(0, 120))
+            continue
+          }
           if (event.type === 'delta') {
             liveRaw += String(event.text ?? '')
             if (!liveTimer) {
@@ -399,7 +414,10 @@ export function createOptimizerController(
     getSnapshot: () => state,
     optimize,
     retry() {
-      if (state.last) void optimize(state.last.text, state.last.sessionId)
+      // last.text 是**拆分后**的正文(斜杠命令前缀单独存在 last.prefix 里),
+      // 必须拼回前缀再重跑,否则 optimize 会丢掉命令词,「替换输入框」写回的
+      // 草稿也会缺前缀。
+      if (state.last) void optimize(joinLast(state.last), state.last.sessionId)
     },
     markApplied(applied: { backup: string; text: string }) {
       set({ applied })
