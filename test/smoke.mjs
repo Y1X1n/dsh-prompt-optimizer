@@ -376,6 +376,59 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   console.log('✓ 10c 不支持推理时回退会话值')
 }
 
+// 10d. 回归:适配器把高档排在前面时,不得把「最低档」钳成最高档(旧实现取
+//      efforts[0],顺序一换就反向);不透明 id(读不出强度)回退会话值不乱发
+{
+  // 高档在前:必须仍选到 low,而不是排首位的 xhigh
+  const highFirst = await setup({
+    llmOverrides: {
+      resolveModelInfo: async () => ({
+        provider: 'p', id: 'm', name: 'M',
+        reasoning: { efforts: [{ id: 'xhigh', name: 'XHigh' }, { id: 'high', name: 'High' }, { id: 'medium', name: 'Medium' }, { id: 'low', name: 'Low' }] },
+      }),
+    },
+  })
+  await call(highFirst.handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(highFirst.getOptions().reasoningEffort, 'low', '高档在前时仍应选最低档,而非排首位的 xhigh')
+
+  // 'xhigh' 不得被 /high/ 误判成普通高档而越过 low
+  const xhighOnly = await setup({
+    llmOverrides: {
+      resolveModelInfo: async () => ({
+        provider: 'p', id: 'm', name: 'M',
+        reasoning: { efforts: [{ id: 'xhigh', name: 'Extra High' }, { id: 'low', name: 'Low' }] },
+      }),
+    },
+  })
+  await call(xhighOnly.handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(xhighOnly.getOptions().reasoningEffort, 'low')
+
+  // 「关闭推理」档应被视为比 low 更低
+  const withNone = await setup({
+    llmOverrides: {
+      resolveModelInfo: async () => ({
+        provider: 'p', id: 'm', name: 'M',
+        reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'none', name: 'Off' }] },
+      }),
+    },
+  })
+  await call(withNone.handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.equal(withNone.getOptions().reasoningEffort, 'none', 'none/off 档应优先于 low')
+
+  // 不透明 id:读不出强度时回退会话值(不冒险乱发)
+  const opaque = await setup({
+    llmOverrides: {
+      resolveModelInfo: async () => ({
+        provider: 'p', id: 'm', name: 'M',
+        reasoning: { efforts: [{ id: 'tier-a', name: 'Tier A' }, { id: 'tier-b', name: 'Tier B' }] },
+      }),
+    },
+  })
+  await call(opaque.handler, { text: 'x', provider: 'p', model: 'm', reasoningEffort: 'tier-b' })
+  assert.equal(opaque.getOptions().reasoningEffort, 'tier-b', '不透明 id 应回退会话值,而非盲取首位')
+  console.log('✓ 10d 最低档按强度序数选取(不依赖展示顺序)')
+}
+
 // 11. 回归:旧版设置文档残留的非法枚举值(mode: custom 等)不得让 schema 校验抛错
 // ——那会导致整个命名空间注册失败、设置页卡片消失。宽松接收 + 使用处归一化。
 {
@@ -617,6 +670,142 @@ async function setup({ config = {}, llmOverrides = {} } = {}) {
   const testCsrf = await call(testHandler, {}, 'POST', { origin: 'https://evil.example', host: '127.0.0.1:3080' })
   assert.equal(testCsrf.status, 403, 'test-model 同样拒绝跨站请求')
   console.log('✓ 19 来源围栏(CSRF / rebinding)')
+}
+
+// 20. 回归:非对象 JSON 体(尤其 `null`)必须被拒绝并应答——旧实现在
+//     `if (!body) return` 处把它当成「已应答」直接返回,请求永久挂起
+{
+  const { handler, testHandler } = await setup()
+  for (const [label, raw] of [['null', 'null'], ['数字', '42'], ['字符串', '"x"'], ['数组', '[]']]) {
+    const a = await call(handler, raw)
+    assert.equal(a.status, 400, `optimize 收到 JSON ${label} 应 400`)
+    assert.ok(a.writableEnded, `optimize 收到 JSON ${label} 必须结束响应`)
+    assert.equal(JSON.parse(a.body).ok, false)
+    const b = await call(testHandler, raw)
+    assert.equal(b.status, 400, `test-model 收到 JSON ${label} 应 400`)
+    assert.ok(b.writableEnded, `test-model 收到 JSON ${label} 必须结束响应`)
+  }
+  console.log('✓ 20 非对象 JSON 体被拒绝(不再挂起)')
+}
+
+// 21. 回归:SSE 阶段出错时不得因二次 writeHead 抛 ERR_HTTP_HEADERS_SENT
+//     逃出路由(响应头已发出后 writeJson 必须静默跳过)
+{
+  const { handler } = await setup()
+  const res = {
+    status: 0, headers: {}, body: '', writableEnded: false, destroyed: false, headersSent: false,
+    on() {},
+    writeHead(status, headers) {
+      if (res.headersSent) {
+        const e = new Error('ERR_HTTP_HEADERS_SENT: Cannot write headers after they are sent to the client')
+        e.code = 'ERR_HTTP_HEADERS_SENT'
+        throw e
+      }
+      res.headersSent = true
+      res.status = status
+      res.headers = headers ?? {}
+      return res
+    },
+    write(chunk) {
+      // 模拟客户端中途断连:SSE 阶段写失败。
+      if (res.headersSent && res.body.includes('"type":"delta"')) throw new Error('socket blew up mid-stream')
+      res.body += chunk
+      return true
+    },
+    end(payload) {
+      if (payload) res.body += payload
+      res.writableEnded = true
+    },
+  }
+  const req = makeReq({ text: 'x', provider: 'p', model: 'm' })
+  let escaped = null
+  try {
+    await handler(req, res)
+  } catch (error) {
+    escaped = error
+  }
+  assert.equal(escaped, null, `异常不得逃出路由(实际:${escaped?.code ?? escaped?.message})`)
+  assert.equal(res.status, 200, 'SSE 阶段已发出的状态码保持不变')
+  console.log('✓ 21 SSE 阶段错误不逃出路由')
+}
+
+// 22. 并发防线:在途优化达到上限时第 N+1 个请求收到 429;排空后恢复;
+//     计数不泄漏(提前 return 的路径也要释放)
+{
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const { handler } = await setup({
+    llmOverrides: {
+      async *stream() {
+        await gate
+        yield { type: 'text-delta', index: 0, text: '<<<OPTIMIZED>>>\n并发结果\n<<<END>>>\n' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+    },
+  })
+  const inflight = [1, 2, 3].map(() => call(handler, { text: 'x', provider: 'p', model: 'm' }))
+  await new Promise((r) => setTimeout(r, 30))
+  const overflow = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(overflow.status, 429, '超出并发上限应 429')
+  assert.match(JSON.parse(overflow.body).error, /上限/)
+  release()
+  await Promise.all(inflight)
+  // 排空后应恢复正常(计数无泄漏);同时校验提前 return 的 400 路径也释放计数
+  const afterDrain = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(afterDrain.status, 200, '排空后应恢复,计数不得泄漏')
+  const badBody = await call(handler, 'null')
+  assert.equal(badBody.status, 400)
+  const stillOk = await call(handler, { text: 'x', provider: 'p', model: 'm' })
+  assert.equal(stillOk.status, 200, '400 路径也必须释放并发计数')
+  console.log('✓ 22 并发上限 429 与计数释放')
+}
+
+// 23. 回归:载体服务只挂载一次。webServer 与 httpServer 若同时存在(哪怕是
+//     两个不同对象),两个 inject 回调都会触发;按对象身份比较会漏挡,把两条
+//     路由注册两遍。这里同时验证三种服务组合下都恰好挂载一次。
+{
+  const registrations = async (provide) => {
+    const web = []
+    const http = []
+    const ctx = new Context()
+    if (provide.web) {
+      ctx.provide('webServer', {
+        register(r) {
+          web.push(r.path)
+          return () => {}
+        },
+      })
+    }
+    if (provide.http) {
+      ctx.provide('httpServer', {
+        register(r) {
+          http.push(r.path)
+          return () => {}
+        },
+      })
+    }
+    ctx.provide('llm', {
+      async *stream() {
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      },
+      listProviders: () => [{ id: 'p' }],
+      listModels: async () => [{ id: 'm' }],
+    })
+    await ctx.plugin(plugin, {})
+    return { web, http, total: web.length + http.length }
+  }
+
+  const both = await registrations({ web: true, http: true })
+  assert.equal(both.total, 2, '两个服务同时存在时,两条路由只能挂载一次')
+  assert.deepEqual([...both.web, ...both.http].sort(), [
+    '/dsh-prompt-optimizer/optimize',
+    '/dsh-prompt-optimizer/test-model',
+  ])
+  const onlyWeb = await registrations({ web: true })
+  assert.equal(onlyWeb.total, 2, '只有 webServer 时应挂载一次')
+  const onlyHttp = await registrations({ http: true })
+  assert.equal(onlyHttp.total, 2, '只有 httpServer 时应挂载一次')
+  console.log('✓ 23 载体服务只挂载一次')
 }
 
 console.log('\nsmoke: all passed')

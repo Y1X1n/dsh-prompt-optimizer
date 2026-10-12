@@ -86,27 +86,38 @@ const ROUTE_PATH = '/dsh-prompt-optimizer/optimize'
 const TEST_ROUTE_PATH = '/dsh-prompt-optimizer/test-model'
 const MAX_BODY_BYTES = 256 * 1024
 
+// 并发防线:优化端点每次调用都是一次真实计费的 LLM 调用。客户端用
+// status==='loading' 挡了重复点击,但端点本身不限并发——同源多标签页或本机
+// 任意进程都能刷。超限直接 429,不排队(排队只会让额度消耗更晚爆发)。
+const MAX_CONCURRENT_OPTIMIZES = 3
+
+// SSE 心跳:推理模型首 token 前可能几十秒无字节,经反代/隧道(LAN 暴露是
+// README 声明支持的用法)空闲超时会掐连接。注释帧 `: ping` 不被现有客户端
+// 解析器消费(它只认 `data:` 行),但足以让中间层看到连接活跃。
+const SSE_HEARTBEAT_MS = 15_000
+
 // 客户端未携带会话 id 时,优化调用标注的合成会话 id(opencode 等提供方要求
 // 会话头才能路由,见 options 组装处);探活调用的固定标注见 testHandler。
 const ONESHOT_SESSION_ID = 'prompt-optimizer-one-shot'
 
 // R27:宽 string schema 的配套告警(枚举值在用处处静默归一化,这里至少让用户
 // 在日志里看到自己手填的值不被支持)。每个 非法字段=值 组合只提醒一次。
-const warnedConfigValues = new Set<string>()
-function warnUnknownEnum(value: string, allowed: readonly string[], label: string): void {
+// 集合挂在 apply 闭包内(实例级):与 effortCache 一致,插件热重载/多实例
+// 时各自独立,重载后该告警能重新出现一次。
+function warnUnknownEnum(warned: Set<string>, value: string, allowed: readonly string[], label: string): void {
   const key = `${label}=${value}`
-  if (!allowed.includes(value) && !warnedConfigValues.has(key)) {
-    warnedConfigValues.add(key)
+  if (!allowed.includes(value) && !warned.has(key)) {
+    warned.add(key)
     console.warn(`[${name}] 配置 ${label}="${value}" 不是有效值(支持:${allowed.join('/')}),已按默认处理`)
   }
 }
 
 /** 对三个宽松枚举字段做非法值告警;归一化仍由各使用处完成。 */
-function warnUnknownEnumConfig(cfg: Config): void {
-  if (cfg.language !== 'zh' && cfg.language !== 'en') warnUnknownEnum(cfg.language, ['zh', 'en'], 'language')
-  if (cfg.mode !== 'full' && cfg.mode !== 'fast') warnUnknownEnum(cfg.mode, ['full', 'fast'], 'mode')
+function warnUnknownEnumConfig(warned: Set<string>, cfg: Config): void {
+  if (cfg.language !== 'zh' && cfg.language !== 'en') warnUnknownEnum(warned, cfg.language, ['zh', 'en'], 'language')
+  if (cfg.mode !== 'full' && cfg.mode !== 'fast') warnUnknownEnum(warned, cfg.mode, ['full', 'fast'], 'mode')
   if (cfg.reasoningEffort !== 'lowest' && cfg.reasoningEffort !== 'session') {
-    warnUnknownEnum(cfg.reasoningEffort, ['lowest', 'session'], 'reasoningEffort')
+    warnUnknownEnum(warned, cfg.reasoningEffort, ['lowest', 'session'], 'reasoningEffort')
   }
 }
 
@@ -153,7 +164,13 @@ function parseContextInput(value: unknown): ConversationTurn[] | undefined {
   return turns.length ? capConversationContext(turns) : undefined
 }
 
+/**
+ * 写 JSON 应答。响应头已发出(SSE 阶段)或已结束时静默跳过:此时再 writeHead
+ * 会抛 ERR_HTTP_HEADERS_SENT,而它本就是从 catch 里调用的——异常会逃出路由,
+ * 变成未处理的 promise rejection。
+ */
 function writeJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
+  if (res.headersSent || res.writableEnded) return
   const payload = JSON.stringify(body)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -204,7 +221,7 @@ function assertTrustedOrigin(req: IncomingMessage, res: ServerResponse): boolean
 /** 请求体超过大小上限时抛出,用于映射 413(与 JSON 解析失败的 400 区分)。 */
 class PayloadTooLargeError extends Error {}
 
-/** 读取并解析 JSON 请求体,带大小上限。 */
+/** 读取并解析 JSON 请求体,带大小上限。非对象载荷(如 `null`)按非法请求体拒绝。 */
 async function readJsonBody(req: import('node:http').IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
@@ -215,7 +232,13 @@ async function readJsonBody(req: import('node:http').IncomingMessage): Promise<u
     chunks.push(buf)
   }
   if (chunks.length === 0) return {}
-  return JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+  // JSON `null` / 标量 / 数组都不是合法请求体。必须在此拒绝:否则下游
+  // `if (!body) return` 会把它当成「已应答」直接返回,请求永远挂着不结束。
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('请求体必须是 JSON 对象')
+  }
+  return parsed
 }
 
 /** 读取请求体并直接应答解析错误(400/413);成功返回 body,失败返回 undefined(响应已写)。 */
@@ -227,7 +250,7 @@ async function readBodyOrReply(req: IncomingMessage, res: ServerResponse): Promi
     if (error instanceof PayloadTooLargeError) {
       writeJson(res, 413, { ok: false, error: error.message })
     } else {
-      writeJson(res, 400, { ok: false, error: '请求体不是合法的 JSON' })
+      writeJson(res, 400, { ok: false, error: '请求体不是合法的 JSON 对象' })
     }
     return undefined
   }
@@ -272,9 +295,33 @@ async function collectText(
 }
 
 /**
+ * 推理档位的序数标尺:名字里能读出强度的按序数比较,读不出返回 undefined。
+ * 覆盖各适配器常见命名(含 none/off 这类「关掉推理」的档与中英写法)。
+ * 从高档往低档匹配,避免 "xhigh" 先被 /high/ 截获成普通高档。
+ * 英文一律带词边界:否则 "low" 会命中 "follow"/"allow"/"below" 这类无关 id。
+ */
+const EFFORT_RANK: readonly { rank: number; re: RegExp }[] = [
+  { rank: 4, re: /(?:^|[^a-z])(?:x[\s_-]?high|very[\s_-]?high|maximum|max|highest)(?:$|[^a-z])|最高/i },
+  { rank: 3, re: /(?:^|[^a-z])high(?:$|[^a-z])|高/i },
+  { rank: 2, re: /(?:^|[^a-z])(?:medium|mid(?:dle)?|standard|default)(?:$|[^a-z])|中/i },
+  { rank: 1, re: /(?:^|[^a-z])(?:minimal|minimum|lowest|low)(?:$|[^a-z])|最少|最低|低/i },
+  { rank: 0, re: /(?:^|[^a-z])(?:none|off|disabled|no[\s_-]?reasoning)(?:$|[^a-z])|^(?:0)$/i },
+]
+
+function effortRank(id: string, name: string): number | undefined {
+  for (const { rank, re } of EFFORT_RANK) {
+    if (re.test(id) || re.test(name)) return rank
+  }
+  return undefined
+}
+
+/**
  * 解析指定路由支持的最低推理强度(「最低档」配置用)。
- * 优先按常见低档关键词匹配 effort 的 id/name;匹配不到取适配器展示顺序首位。
- * 目录查询失败或模型不支持推理时返回 undefined,调用方回退到会话选择。
+ *
+ * 按可读出的强度序数取最小档;读不出序数(适配器用不透明 id)时返回 undefined,
+ * 由调用方回退到会话选择——**不再**假设「展示顺序首位即最低档」:个别适配器
+ * 高档在前时,那个假设会把优化钳到最慢最贵的一档,与配置意图正好相反。
+ * 目录查询失败或模型不支持推理时同样返回 undefined。
  */
 async function resolveLowestEffort(
   llm: Context['llm'],
@@ -285,8 +332,13 @@ async function resolveLowestEffort(
     // reasoning 只在精确路由元数据上,listModels 的目录项没有。
     const efforts = (await llm.resolveModelInfo(provider, model)).reasoning?.efforts
     if (!efforts?.length) return undefined
-    const keyworded = efforts.find((e) => /none|minimal|low|低/i.test(`${e.id} ${e.name}`))
-    return String((keyworded ?? efforts[0]).id)
+    let best: { id: string; rank: number } | undefined
+    for (const effort of efforts) {
+      const rank = effortRank(String(effort.id), String(effort.name ?? ''))
+      if (rank === undefined) continue
+      if (!best || rank < best.rank) best = { id: String(effort.id), rank }
+    }
+    return best?.id
   } catch {
     return undefined
   }
@@ -341,6 +393,10 @@ interface WebRouteService {
 }
 
 export function apply(ctx: Context, config: Config) {
+  // R27 告警去重集合(实例级,见 warnUnknownEnum 注释)。
+  const warnedConfigValues = new Set<string>()
+  // 在途优化计数(并发防线,见 MAX_CONCURRENT_OPTIMIZES)。
+  let inFlightOptimizes = 0
   // 路由 → 最低档 effort 的实例级缓存:每次优化点击都会解析一遍,而模型的推理
   // 档位表极少变化。仅缓存成功结果,失败不缓存——下次点击重试,避免一次目录
   // 抖动永久挡住钳档。挂在 apply 闭包内:随插件实例生灭,测试间天然隔离。
@@ -399,8 +455,13 @@ export function apply(ctx: Context, config: Config) {
     })
   })
   // 启动即对初始配置做一次非法枚举告警;请求期配置可能被实时改写,handler 内还会复查。
-  warnUnknownEnumConfig(current())
+  warnUnknownEnumConfig(warnedConfigValues, current())
 
+  // 路由挂载状态。mounted 必须**同步**置位:webServer 与 httpServer 若同时存在
+  // (哪怕是两个不同对象),两个 inject 回调都会触发,只有同步标志能挡住第二次
+  // 注册——按对象身份比较会漏挡,导致路由被注册两遍。
+  // 同时它随 effect 生命周期复位:服务 dispose→re-register 时 inject 回调再次
+  // 触发,能重新挂载,而不是从此缺席到插件整体重载。
   let mounted = false
   const mount = (server: WebRouteService | undefined) => {
     if (!server || mounted) return
@@ -408,12 +469,13 @@ export function apply(ctx: Context, config: Config) {
     ctx.effect(() => {
       const disposeOptimize = server.register({ kind: 'exact', path: ROUTE_PATH, handler })
       const disposeTest = server.register({ kind: 'exact', path: TEST_ROUTE_PATH, handler: testHandler })
+      console.log(`[${name}] loaded, POST ${ROUTE_PATH}`)
       return () => {
+        mounted = false
         disposeOptimize()
         disposeTest()
       }
     })
-    console.log(`[${name}] loaded, POST ${ROUTE_PATH}`)
   }
   ctx.inject(['webServer'], (sctx) => mount((sctx as unknown as { webServer?: WebRouteService }).webServer))
   ctx.inject(['httpServer'], (sctx) => mount((sctx as unknown as { httpServer?: WebRouteService }).httpServer))
@@ -432,6 +494,24 @@ export function apply(ctx: Context, config: Config) {
         return
       }
       if (!assertTrustedOrigin(req, res)) return
+      // 并发防线:在途优化已达上限时直接 429(每次调用都是真实计费调用)。
+      // 计数在下方 try/finally 里配对释放,任何路径(含提前 return)都不会泄漏。
+      if (inFlightOptimizes >= MAX_CONCURRENT_OPTIMIZES) {
+        writeJson(res, 429, {
+          ok: false,
+          error: `同时进行的优化已达上限(${MAX_CONCURRENT_OPTIMIZES} 个),请稍后再试。`,
+        })
+        return
+      }
+      inFlightOptimizes += 1
+      try {
+        await handleOptimize(req, res)
+      } finally {
+        inFlightOptimizes -= 1
+      }
+  }
+
+  async function handleOptimize(req: IncomingMessage, res: ServerResponse) {
       // 客户端在响应结束前断开连接时,中止模型调用。
       // 注意:必须用 res 的 close;req 的 close 在请求体读完就会触发,不代表断连。
       const abort = new AbortController()
@@ -455,7 +535,7 @@ export function apply(ctx: Context, config: Config) {
         const cfg = current()
         // 宽松 schema 的配套归一化:未知枚举值一律回落默认,保证旧版设置文档可用
         //(非法值会先告警一次,见 warnUnknownEnumConfig)。
-        warnUnknownEnumConfig(cfg)
+        warnUnknownEnumConfig(warnedConfigValues, cfg)
         const language: OutputLanguage = cfg.language === 'en' ? 'en' : 'zh'
         const mode: OptimizerMode = cfg.mode === 'fast' ? 'fast' : 'full'
         const route = await resolveRoute(ctx.llm, cfg.model, asOptionalString(body.provider), asOptionalString(body.model))
@@ -519,6 +599,11 @@ export function apply(ctx: Context, config: Config) {
         const send = (event: Record<string, unknown>) => {
           if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`)
         }
+        // SSE 心跳:首 token 前可能长时间无字节,反代/隧道会按空闲超时掐连接。
+        // 注释帧(`:` 开头)被现有客户端解析器忽略(它只认 `data:` 行)。
+        const heartbeat = setInterval(() => {
+          if (!res.destroyed && !res.writableEnded) res.write(': ping\n\n')
+        }, SSE_HEARTBEAT_MS)
         // 超时兜底:模型挂死时中止调用并通知客户端(timedOut 与客户端断连共用 abort,靠标志位区分)。
         const timeoutSec = cfg.timeoutSeconds ?? 120
         let timedOut = false
@@ -602,13 +687,17 @@ export function apply(ctx: Context, config: Config) {
           }
         } finally {
           clearTimeout(timer)
+          clearInterval(heartbeat)
         }
         res.end()
       } catch (error) {
         if (abort.signal.aborted) return // 客户端已断开,无需应答
         const message = error instanceof Error ? error.message : String(error)
         console.error(`[${name}] optimize failed:`, error)
+        // SSE 阶段(res.writeHead(200) 之后)出错时不能再改状态码:writeJson 内部
+        // 已按 headersSent 跳过,这里只是避免调用方误以为已应答。
         writeJson(res, 502, { ok: false, error: message })
+        if (!res.writableEnded) res.end()
       }
   }
 
