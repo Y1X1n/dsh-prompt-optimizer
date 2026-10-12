@@ -39,7 +39,7 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 | | |
 |---|---|
 | ![发送栏空闲态:✨ 优化按钮位于模型选择旁,空输入时禁用](docs/screenshots/composer-idle.png) | ![面板错误态:上游模型错误完整透传,可一键重试](docs/screenshots/panel-error.png) |
-| ![设置卡折叠态:标题栏显示「模型 · 模式」关键摘要](docs/screenshots/settings-collapsed.png) | ![设置卡展开态:模型 / 调用参数 / 上下文 三组配置](docs/screenshots/settings-expanded.png) |
+| ![设置页:模型 / 调用参数 / 上下文 三组配置](docs/screenshots/settings-expanded.png) | ![结果面板:诊断与优化稿](docs/screenshots/optimize-panel.png) |
 
 ## 功能
 
@@ -58,7 +58,7 @@ DeepSeek Harness 插件:在会话输入框(发送栏)旁提供一个「优化」
 - 面板样式全部走 Harness 官方设计令牌(`--dsw-alias-*`),明暗主题自动跟随。
 - 长草稿友好:输出上限默认跟随输入长度自动抬升(按本地 token 估算,完整模式 ×2 / 快速模式 ×1.5,32768 封顶);真截断时也会展示已生成部分并明确提示,不会整段消失。
 - 格式容错:模型输出的标记变体(如 `<<< ANALYSIS >>>`)能正确解析;完整模式不遵守格式时降级展示并给出警示;快速模式只有单段落,无论模型是否输出标记都视为合规(不弹警示、记忆链照常携带)——对不输出标记的第三方/免费模型友好,且其原始流可直接实时逐字预览(标记出现前)。
-- 设置 → 插件配置 → 「提示词优化」卡片(默认收起,点击标题栏展开;收起时标题栏显示「模型 · 模式」关键摘要;所有改动可一步撤销——底部「撤销上一次修改」,内存栈最近 20 次):
+- 设置 → 插件配置 → 「提示词优化」页(平铺行布局,分「模型 / 调用参数 / 上下文」三组;所有改动可一步撤销——底部「撤销上一次修改」,内存栈最近 20 次;底部右侧为 GitHub 仓库入口):
   - **模型**:优化用模型(**跟随当前会话**(默认),或从模型目录固定一个,provider/model 下拉、目录可手动刷新)/ 回退模型(主路由零产出失败时自动 failover,面板徽章显示「· 已回退」,悬停可见失败原因)/ 模型连通性(「测试连接」,32 token / 20s 封顶探活,显示实际路由与耗时)
   - **调用参数**:输出语言(中文 / English);优化模式:**快速**(默认,仅优化,输出 token 约减半)/ 完整(分析 + 优化);推理强度:降到最低档(默认,推理模型首 token 前的空转显著缩短)/ 跟随会话;最大输出 Token(默认 8192)、超时时间(默认 120s)、采样温度(默认 0.2,悬停见设计依据);输出上限自适应开关(默认开)
   - **上下文**:携带上下文开关(默认开):关闭后仅看草稿本身,不读取会话历史
@@ -127,7 +127,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 - **会话标注恒存在(v0.5.0 补强 opencode)**:v0.4.0 的标注依赖客户端携带会话 id,个别宿主形态不向槽位组件投递 `sessionId` 时请求体会缺失、opencode 依旧报「缺少请求头」。0.5.0 起 Host 侧兜底:客户端未携带(或为空白)时标注合成 id `prompt-optimizer-one-shot`,任何调用路径都满足会话头要求;客户端正常携带时仍用真实会话 id(计量归属不变)。注意旧 profile 里装的插件(0.3.x 及更早)不含修复,升级到 0.5.0+ 并重启宿主/刷新页面。
 - **官方桌面端安装**:桌面应用首次启动初始化 `desktop` profile 后,完全退出应用,用应用自带 CLI 安装并重启:`"E:\Deepseek-Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @y1x1n/dsh-prompt-optimizer`(macOS/Linux 路径见应用安装目录);不要用 npm 版 CLI 管理桌面保留 profile。
 
-- 开发基线:`@deepseek-ai/*` **0.1.5-rc.1**(v0.3.17 起,`sync:types` 钉同一版本);已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)与 **0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。
+- 开发基线:`@deepseek-ai/*` **0.2.0-rc.2**(v0.4.0 起,`sync:types` 与 devDeps 钉同一版本);此前基线为 **0.1.5-rc.1**(v0.3.17 起)。已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)与 **0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
 - **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
 - **客户端类型面随 0.1.2/0.1.5 迁移**(v0.3.17 适配):`dsh-client-runtime` 包已从上游移除,`ClientContext` 即 cordis 的 `Context`;`SettingsScope` 迁至 `@deepseek-ai/dsh-client-ui-settings/client`(其 `SettingsScopeBinder` 自带 `ctx.settingsScope` 的 Context 合并,插件不再重复声明,否则合并冲突);`ctx.slots` 的合并由 `@deepseek-ai/dsh-client-ui-renderer/client` 提供。`HistoryEntry` / `ModelProviderGroup` 迁入未发布的 `dsh-api-session-controller`,插件改在 `src/client/host-faces.ts` 自带最小结构面,不再追上游类型。
@@ -136,7 +136,7 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 - **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
 - **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。0.1.5 起 bundle 以 `/plugins/??<id>/client.js,…&rev=<hash>` 组合 URL 提供,单插件裸路径不再单独暴露(以 boot manifest 里的组合 URL 为准)。
 - HTTP 载体服务名在发布版间漂移过(npm 0.0.1-rc.x 类型包叫 `httpServer`,0.1.0-rc.x 运行时叫 `webServer`):本插件用 `ctx.inject` 同时等待两个名字,且不做静态硬依赖——即使服务名再次变化,也只会使本插件的路由不注册(10 秒后日志告警),不会拖垮整个 Harness 启动。
-- **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON),成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。
+- **客户端协议口径**:`/dsh-prompt-optimizer/optimize` 预校验失败返回 400/405/409/413(普通 JSON)、并发超限返回 429,成功后进入 SSE 流,模型错误经 `error` 事件传达;`/dsh-prompt-optimizer/test-model` **无论成败一律 HTTP 200**,由 body 的 `ok` 字段区分(探活是应用层语义,刻意不走传输层状态码)——对接方请以 `ok` 为准。请求体必须是 JSON **对象**:`null`/标量/数组一律 400。
 - 客户端与 Host 需同版本(SSE 协议是私有约定):升级插件后请重启 `dsh web` 并刷新浏览器页面。
 
 ## 常见问题
@@ -159,10 +159,10 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
 - Client:bundle 被 client-modules 扫描收录并出现在页面 boot manifest(0.1.5 起以 `/plugins/??<ids>&rev=<hash>` 组合 URL 提供),插件行出现在模块清单中;
 - 端到端:真实调用 `ctx.llm`(DeepSeek 路由)完成「分析 + 优化」,标记解析正确(`wellFormed: true`)。
-- 自动化测试(`npm test`,共 74 例):
-  - `test/smoke.mjs`:30 项 Host 冒烟用例(真实 cordis Context + mock 服务,覆盖路由解析优先级、空字符串/畸形配置、400/405/409/413、SSE 事件流、max-tokens 截断、超时、快速模式与默认模式、推理钳档、旧版设置文档归一化、连接测试、会话标注兜底、回退链与回退原因透传、tool-calls 防御、输出上限自适应、上下文注入与硬开关、策略选择、记忆链注入与截断、来源围栏);
-  - `test/prompt.test.mjs`:20 项元提示词解析用例(标记空白变体、降级路径、流式实况解析、新旧两种输出顺序、流式缓冲压缩(单段/两段式)、token 估算、上下文载荷与预算收敛、策略分叉、保真纪律与示例、记忆链载荷);
-  - `test/controller.test.mjs`:24 项客户端纯逻辑用例(SSE 帧解析、合帧节流、连接中断、跳过会话查询、撤回流转、retry、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底、新输出顺序的流式预览与压缩兜底)。
+- 自动化测试(`npm test`,共 85 例):
+  - `test/smoke.mjs`:35 项 Host 冒烟用例(真实 cordis Context + mock 服务,覆盖路由解析优先级、空字符串/畸形配置、400/405/409/413、非对象 JSON 体拒绝、SSE 事件流、SSE 阶段错误不逃出路由、并发上限 429、载体服务只挂载一次、max-tokens 截断、超时、快速模式与默认模式、推理钳档(按强度序数而非展示顺序)、旧版设置文档归一化、连接测试、会话标注兜底、回退链与回退原因透传、tool-calls 防御、输出上限自适应、上下文注入与硬开关、策略选择、记忆链注入与截断、来源围栏);
+  - `test/prompt.test.mjs`:24 项元提示词解析用例(标记空白变体、降级路径、空 OPTIMIZED 段不回退、标记字样不进入结果、未闭合思考块不污染解析、流式实况解析、新旧两种输出顺序、流式缓冲压缩(单段/两段式)、token 估算 CJK 覆盖、上下文载荷与预算收敛、策略分叉、保真纪律与示例、记忆链载荷);
+  - `test/controller.test.mjs`:26 项客户端纯逻辑用例(SSE 帧解析与损坏帧跳过、合帧节流、连接中断、跳过会话查询、撤回流转、retry 保留斜杠前缀、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底、新输出顺序的流式预览与压缩兜底)。
 
 ## 工作原理
 
@@ -221,9 +221,9 @@ dsh-prompt-optimizer/
 │       ├── i18n.ts       # 界面文案 zh/en 字典,跟随 DSH 界面语言
 │       ├── OptimizeButton.tsx   # 发送栏按钮
 │       ├── ResultDock.tsx       # 输入卡上方的结果面板(流式实况 + 撤回)
-│       ├── SettingsCard.tsx     # 设置页折叠卡片
+│       ├── SettingsCard.tsx     # 设置页(模型/调用参数/上下文 三组行)
 │       ├── SparkleIcon.tsx      # 手绘 ✨ 图标
-│       └── GitHubIcon.tsx       # GitHub 图标(设置卡标题栏仓库入口)
+│       └── GitHubIcon.tsx       # GitHub 图标(设置页底部仓库入口)
 ├── scripts/build.mjs     # esbuild:Host ESM + Client lazy-CJS factory + 两个测试用产物
 ├── scripts/sync-types.mjs
 ├── scripts/prompt-probe.mjs  # 提示词实证探针:对运行实例发真实优化请求(PROBE_ROUTE=provider/model 可指定路由)
@@ -234,6 +234,8 @@ dsh-prompt-optimizer/
 
 - HTTP 路由注册在 dsh 自带的 Web 服务器上。默认监听 `127.0.0.1`;若把 dsh 暴露到局域网(`0.0.0.0`),本插件的优化接口同样可被局域网调用——它会消耗你配置的模型额度,请知悉。
 - 两条路由均带**来源围栏**:带 `Origin` 头的请求(浏览器 POST 必带)必须与 `Host` 同源,且 `Host` 必须是回环地址或本机实际地址——网页侧的跨站伪造请求(CSRF)与 DNS rebinding 会被 403 拒绝;不带 `Origin` 的命令行调用不受影响。
+- 优化路由带**并发上限**(同时最多 3 个在途调用),超出直接 `429`;每次优化都是一次真实计费的模型调用,该上限用于挡住多标签页/脚本刷调用。
+- SSE 阶段每 15 秒发送注释帧心跳(`: ping`),避免经反向代理/隧道访问时被空闲超时掐断(注释帧不含数据,客户端解析器天然忽略)。
 - 插件不持有任何 API Key:模型调用全部经由 Harness 已配置的 `ctx.llm` 路由。
 
 ## 贡献者

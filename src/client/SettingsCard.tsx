@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { GitHubIcon } from './GitHubIcon.js'
 import type { OptimizerModelFailure, OptimizerModelGroup } from './host-faces.js'
 import { sessionCatalog } from './host-faces.js'
 import type { OptimizerSettingsValue, SettingsFace } from './settings-face.js'
 import { useT } from './i18n.js'
 
+/** 仓库地址(设置页底部入口;与 package.json 的 repository 保持一致)。 */
+const REPO_URL = 'https://github.com/Y1X1n/dsh-prompt-optimizer'
+
 /**
- * 设置卡(0.2.0 原生风格):注册为 `settings.plugins.tab` 的标签页,平铺行布局
+ * 设置页(0.2.0 原生风格):注册为 `settings.plugins.tab` 的标签页,平铺行布局
  * 与官方设置页同构 —— 行标题 14px、描述 12px 次级色、行间 0.5px 分隔线,
  * 枚举项用官方 SegmentedControl 同款分段控件、布尔项用同款开关(样式取自
  * dsh-client-ui-primitives 的对应 CSS,手写注入以保持跨版本零依赖)。
@@ -16,7 +20,7 @@ import { useT } from './i18n.js'
 const STYLES_ID = 'dsh-prompt-optimizer-settings-styles'
 
 /**
- * 注入设置卡的行/控件样式(幂等)。取值对齐官方 ui-settings-general 行样式与
+ * 注入设置页的行/控件样式(幂等)。取值对齐官方 ui-settings-general 行样式与
  * ui-primitives 的 SegmentedControl/Switch:分段控件 = 浅底轨道 + 选中白胶囊,
  * 开关 = 36×20 胶囊 + 16px 圆形滑块,全部走 --dsw-* 令牌,明暗主题自动跟随。
  */
@@ -248,7 +252,7 @@ function catalogChevron(): string {
 }
 
 /**
- * 设置卡:0.1.x 注册进 `settings.plugin.item`、0.2.0 注册为
+ * 设置页:0.1.x 注册进 `settings.plugin.item`、0.2.0 注册为
  * `settings.plugins.tab`(插件页的一个标签),读写走统一的 SettingsFace
  * (0.1.x settingsScope / 0.2.0 configForms,见 settings-face.ts)。
  */
@@ -509,8 +513,8 @@ export function createSettingsCard(ctx: ClientContext, face: SettingsFace) {
           />
         </Row>
 
-        {/* U16:撤销最近一次设置修改(内存栈,刷新即清)。 */}
-        <div className="dsh-po-row" style={{ paddingBottom: 4 }}>
+        {/* U16:撤销最近一次设置修改(内存栈,刷新即清);右侧为仓库入口。 */}
+        <div className="dsh-po-row" style={{ paddingBottom: 4, gap: 12 }}>
           <button
             className="dsh-po-btn2 dsh-po-btn"
             type="button"
@@ -520,6 +524,26 @@ export function createSettingsCard(ctx: ClientContext, face: SettingsFace) {
           >
             {t('settings.undo')}
           </button>
+          <a
+            className="dsh-po-repo-link dsh-po-btn"
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={t('settings.repoTitle')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              fontSize: 12,
+              borderRadius: 6,
+              color: 'var(--dsw-alias-label-secondary, inherit)',
+              textDecoration: 'none',
+            }}
+          >
+            <GitHubIcon size={14} />
+            GitHub
+          </a>
         </div>
       </section>
     )

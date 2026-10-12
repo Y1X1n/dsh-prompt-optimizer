@@ -2,3 +2,7 @@ node_modules/
 lib/
 *.tgz
 .ima-note-id
+
+# 本地 agent 工作目录(不入库)
+.workbuddy/
+.workbuddy-ai/

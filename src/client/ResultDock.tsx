@@ -297,7 +297,9 @@ export function createResultDock(controller: OptimizerController) {
     }
 
     return (
-      <div style={styles.panel} role="dialog" aria-label={t('panel.aria')}>
+      // 非模态 dock(不抢焦点、无焦点陷阱),用 region 而非 dialog:
+      // dialog 会让读屏用户期待焦点管理,而这里并没有。
+      <div style={styles.panel} role="region" aria-label={t('panel.aria')}>
         <div style={styles.header}>
           <SparkleIcon size={15} />
           <span style={styles.title}>{t('panel.title')}</span>

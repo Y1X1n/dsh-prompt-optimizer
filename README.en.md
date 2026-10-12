@@ -39,7 +39,7 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 | | |
 |---|---|
 | ![Composer idle state: the ✨ Optimize button next to the model picker, disabled while empty](docs/screenshots/composer-idle.png) | ![Panel error state: upstream model errors surface in full, with one-click retry](docs/screenshots/panel-error.png) |
-| ![Settings card collapsed: the header shows a "model · mode" summary](docs/screenshots/settings-collapsed.png) | ![Settings card expanded: model / generation parameters / context groups](docs/screenshots/settings-expanded.png) |
+| ![Settings page: model / generation parameters / context groups](docs/screenshots/settings-expanded.png) | ![Result panel: diagnosis and optimized prompt](docs/screenshots/optimize-panel.png) |
 
 ## Features
 
@@ -58,7 +58,7 @@ A DeepSeek Harness plugin that adds an **Optimize** button (✨) next to the com
 - All panel styling uses official Harness design tokens (`--dsw-alias-*`); follows light/dark theme automatically.
 - Long-draft friendly: the output cap rises with estimated input length by default (full mode ×2 / fast mode ×1.5, capped at 32768); on real truncation the partial result is still shown with a clear notice instead of disappearing.
 - Format tolerance: marker variants (e.g. `<<< ANALYSIS >>>`) parse correctly; in full mode, outright non-compliant output degrades gracefully with a warning; in fast mode the result is a single section, so it always counts as compliant whether or not the model emits markers (no warning, memory chain unaffected) — friendly to third-party/free models that skip the marker format — their raw stream is previewed live, character by character, until a marker appears.
-- Settings → Plugins → "Prompt Optimizer" card (collapsed by default, click the header to expand; the collapsed header shows a "model · mode" summary; every change can be reverted in one step via "Undo last change" at the bottom — an in-memory stack of the last 20):
+- Settings → Plugins → the "Prompt Optimizer" page (flat row layout in three groups: Model / Generation parameters / Context; every change can be reverted in one step via "Undo last change" at the bottom — an in-memory stack of the last 20; the GitHub repo link sits at the bottom right):
   - **Model**: optimization model (**follow the current session** (default), or pin one from the model catalog, provider/model dropdown with manual refresh) / fallback model (automatic failover when the primary route fails before producing anything — the panel badge shows "· fallback", hover to see why) / connectivity ("Test connection", 32-token / 20s capped probe showing the actual route and latency)
   - **Generation parameters**: output language (中文 / English); mode: **fast** (default, rewrite only, roughly half the output tokens) / full (analysis + rewrite); reasoning effort: clamp to lowest tier (default — dramatically shortens the pre-first-token stall on reasoning models) / follow session; max output tokens (default 8192), timeout (default 120s), temperature (default 0.2, hover for the rationale); auto output-cap toggle (default on)
   - **Context**: include-context toggle (default on): when off, only the draft itself is read — no session history
@@ -158,10 +158,10 @@ Verified in a real environment (dsh 0.1.0-rc.8 tested + 0.1.1-rc.2 re-verified, 
 - Host: startup log `[dsh-prompt-optimizer] loaded`; both routes behave correctly across their 400/405/409/413 paths; SSE streaming verified live;
 - Client: the bundle is picked up by client-modules and listed in the page boot manifest (from 0.1.5 served through the combined `/plugins/??<ids>&rev=<hash>` URL), with the plugin row present in the module list;
 - End to end: a real `ctx.llm` call (DeepSeek route) completes "analysis + rewrite" with correct marker parsing (`wellFormed: true`).
-- Automated tests (`npm test`, 74 cases):
-  - `test/smoke.mjs`: 30 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, SSE event flow, max-tokens truncation, timeout, fast mode and the new default, reasoning clamp, legacy-settings normalization, connectivity test, session-stamp fallback, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation, origin fence);
-  - `test/prompt.test.mjs`: 20 meta-prompt parsing cases (marker whitespace variants, degradation paths, partial-stream parsing, both output orders, stream-buffer compaction (single-segment and two-stage), token estimation, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
-  - `test/controller.test.mjs`: 24 client pure-logic cases (SSE frame parsing, frame coalescing, interrupted connections, session-query skipping, undo flow, retry, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling, live preview and compaction fallback under the new output order).
+- Automated tests (`npm test`, 85 cases):
+  - `test/smoke.mjs`: 35 Host smoke cases (real cordis Context + mocked services: route-resolution priority, empty/malformed config, 400/405/409/413, non-object JSON body rejection, SSE event flow, post-header errors not escaping the route, concurrency cap 429, carrier service mounted exactly once, max-tokens truncation, timeout, fast mode and the new default, reasoning clamp (by intensity rank, not display order), legacy-settings normalization, connectivity test, session-stamp fallback, fallback chain with fallback-reason passthrough, tool-calls guard, auto output cap, context injection and hard switch, strategy selection, memory-chain injection and truncation, origin fence);
+  - `test/prompt.test.mjs`: 24 meta-prompt parsing cases (marker whitespace variants, degradation paths, empty OPTIMIZED segment not falling back to raw text, marker text never entering the result, unclosed think blocks not polluting parsing, partial-stream parsing, both output orders, stream-buffer compaction (single-segment and two-stage), CJK token-estimation coverage, context payload and budgeting, strategy fork, fidelity rules and examples, memory-chain payload);
+  - `test/controller.test.mjs`: 26 client pure-logic cases (SSE frame parsing with corrupt-frame skipping, frame coalescing, interrupted connections, session-query skipping, undo flow, retry preserving the slash prefix, close-abort, cancel keeping partial output plus its state gate, client timeout watchdog, history extraction filtering and degradation, slash-prefix splitting and bare-command rejection, memory-chain passing and gates, send-to-close decisions, duration recording, user-first context sampling, live preview and compaction fallback under the new output order).
 
 ## How it works
 
@@ -219,9 +219,9 @@ dsh-prompt-optimizer/
 │       ├── i18n.ts       # zh/en UI copy, follows the DSH interface language
 │       ├── OptimizeButton.tsx   # composer button
 │       ├── ResultDock.tsx       # result panel above the input card (live streaming + undo)
-│       ├── SettingsCard.tsx     # collapsible settings card
+│       ├── SettingsCard.tsx     # settings page (Model / Params / Context row groups)
 │       ├── SparkleIcon.tsx      # hand-drawn ✨ icon
-│       └── GitHubIcon.tsx       # GitHub icon (repo link in the settings card header)
+│       └── GitHubIcon.tsx       # GitHub icon (repo link at the bottom of the settings page)
 ├── scripts/build.mjs     # esbuild: Host ESM + Client lazy-CJS factory + two test artifacts
 ├── scripts/sync-types.mjs
 ├── scripts/prompt-probe.mjs  # prompt evidence probe: fires real optimize requests at a running instance (PROBE_ROUTE=provider/model to pin a route)
