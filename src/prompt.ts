@@ -288,6 +288,15 @@ function findLastMarker(text: string, word: 'ANALYSIS' | 'OPTIMIZED' | 'END', be
   return last
 }
 
+/**
+ * 去掉全部标记字样。标记是协议脚手架,任何情况下都不是用户内容——
+ * 模型只吐了一个孤立的 `<<<END>>>`(截断/格式跑偏)时,它会落进「无标记输出」
+ * 的兜底分支被当成正文,必须在这里剔除,否则标记会随结果交付给用户。
+ */
+function stripMarkers(text: string): string {
+  return text.replace(/<<<\s*(?:ANALYSIS|OPTIMIZED|END)\s*>>>/g, '')
+}
+
 /** 从 fromIndex 起找下一个任意标记(ANALYSIS/OPTIMIZED/END),用于确定段落的结束边界。 */
 function findNextMarker(text: string, fromIndex: number): { index: number; length: number } | null {
   const re = /<<<\s*(?:ANALYSIS|OPTIMIZED|END)\s*>>>/g
@@ -410,9 +419,12 @@ export function parseOptimizerOutput(raw: string, mode: OptimizerMode = 'full'):
   const wellFormed = mode === 'fast' ? true : Boolean(a && o)
 
   if (!a && !o) {
-    // 无标记:整段即结果。但空结果不算合规(截断到只剩思考块时会走到这里),
-    // 否则 fast 模式会把「什么都没产出」当成正常结果展示。
-    return { analysis: '', optimized: text, wellFormed: wellFormed && Boolean(text) }
+    // 无 OPTIMIZED/ANALYSIS:整段即结果。但要先剔除标记字样——孤立的
+    // `<<<END>>>`(截断或格式跑偏)会落进这里,不能当正文交付。
+    // 空结果不算合规(截断到只剩思考块时也会走到这里),否则 fast 模式会把
+    // 「什么都没产出」当成正常结果展示。
+    const body = stripMarkers(text).trim()
+    return { analysis: '', optimized: body, wellFormed: wellFormed && Boolean(body) }
   }
   const optimized = o ? segmentAfter(text, o) : ''
   const analysis = a ? segmentAfter(text, a) : ''

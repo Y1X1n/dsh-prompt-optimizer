@@ -403,4 +403,32 @@ import { buildSystemPrompt, buildUserPayload, capConversationContext, compactPar
   console.log('✓ p23 token 估算 CJK 覆盖')
 }
 
+// p24 回归:标记字样绝不进入用户可见结果。模型只吐一个孤立的 <<<END>>>
+//     (截断/格式跑偏)时会落进「无 OPTIMIZED/ANALYSIS」的兜底分支,旧实现
+//     直接把它当正文交付——与 p21 同一类缺陷的另一条入口。
+{
+  const onlyEnd = parseOptimizerOutput('<<<END>>>', 'fast')
+  assert.equal(onlyEnd.optimized, '', '孤立 END 不得当正文')
+  assert.equal(onlyEnd.wellFormed, false, '无产出应判退化')
+  assert.ok(!onlyEnd.optimized.includes('<<<'), '结果中不得残留标记')
+
+  const endThenText = parseOptimizerOutput('<<<END>>>\n残留文字', 'fast')
+  assert.equal(endThenText.optimized, '残留文字', '标记被剔除,真实文字保留')
+
+  const padded = parseOptimizerOutput('  <<<END>>>  ', 'fast')
+  assert.equal(padded.optimized, '')
+
+  // 无标记的正常输出不受影响
+  const clean = parseOptimizerOutput('干净输出', 'fast')
+  assert.equal(clean.optimized, '干净输出')
+  assert.equal(clean.wellFormed, true)
+
+  // 完整模式:END 之后的杂音仍不归属任何段落,且段落内不含标记
+  const mixed = parseOptimizerOutput('<<<OPTIMIZED>>>\n正文\n<<<END>>>\n<<<ANALYSIS>>>\n尾巴', 'full')
+  assert.equal(mixed.optimized, '正文')
+  assert.equal(mixed.analysis, '')
+  assert.ok(!/<<</.test(mixed.optimized) && !/<<</.test(mixed.analysis), '两段都不得含标记字样')
+  console.log('✓ p24 标记字样不进入结果')
+}
+
 console.log('\nprompt: all passed')
