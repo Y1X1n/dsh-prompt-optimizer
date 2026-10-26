@@ -110,10 +110,11 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 兼容性
 
-> **当前版本(v0.6.1)适配 DeepSeek Harness**:
+> **当前版本(v0.6.2)适配 DeepSeek Harness**:
 >
 > | dsh 版本 | 优化路由 / 模型调用 | 设置页(含 GitHub 入口) | 发送栏按钮 / 结果面板 | 携带会话上下文 |
 > |---|---|---|---|---|
+> | **0.2.1-rc.3(Web + 官方桌面端运行时)** | ✅ 实测(路由/SSE/错误态) | ✅ 实测(标签页 + 设置卡读写) | ✅ 实测 | ✅ 契约核对 |
 > | **0.2.1-rc.2(Web + 官方桌面端)** | ✅ 产物核对 | ✅ 产物核对(含槽位注册修复) | ✅ 产物核对 | ✅ 新增可用 |
 > | **0.2.0-rc.2(Web + 官方桌面端)** | ✅ 实测 | ✅ 实测 | ✅ 实测 | ✅ |
 > | **0.1.5-rc.2** | ✅ 实测 | ✅ 实测 | ✅ 实测 | 降级(无 `ctx.sessions`) |
@@ -123,19 +124,20 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 >
 > 同一份构建覆盖 0.1.0-rc.7 至 0.2.1 全线;`package.json` 现声明 `engines.dsh: ">=0.1.0-rc.7 <0.3.0-0"`,由宿主在启动期校验(含 prerelease),把 0.3.x 显式排除在外。
 >
-> **关于「产物核对」**:v0.6.0 的 0.2.1-rc.2 支持是对**上游随包发布的真实运行时**逐项核对得到的(槽位声明、`SlotCore` 抛错行为、`ctx.sessions` 提供方、`session/page` 分页语义、`ConfigFormSnapshot` 形状、`engines.dsh` 校验、client baseline 静态模块表),并配有针对性回归测试;未在 0.2.1-rc.2 的真实 GUI 里点通全流程(本机实例需要 launch token)。此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
+> **关于「产物核对」**:v0.6.0 的 0.2.1-rc.2 支持是对**上游随包发布的真实运行时**逐项核对得到的(槽位声明、`SlotCore` 抛错行为、`ctx.sessions` 提供方、`session/page` 分页语义、`ConfigFormSnapshot` 形状、`engines.dsh` 校验、client baseline 静态模块表),并配有针对性回归测试;当时未在 0.2.1-rc.2 的真实 GUI 里点通全流程(本机实例需要 launch token)。**v0.6.2 的 0.2.1-rc.3 支持升级为真实端到端实测**:用官方桌面端自带的 rc.3 runtime CLI 引导临时 profile 并安装发布的 tgz,在页面上确认了发送栏「优化」按钮、`settings.plugins.tab` 标签页与设置卡渲染、设置写入落盘到 profile 补丁;优化请求确实到达 Host 路由并经 SSE 返回上游错误(测试账户余额为 0,因此验证的是错误态而非成功输出)。逐项差异核对见 [`docs/dsh-021-rc3-diff.md`](docs/dsh-021-rc3-diff.md)。此标注自 v0.3.15 起在每个 Release 说明中固定维护,更早 Release 的说明已回溯补注。
 
 - **v0.4.0 适配 dsh 0.2.0-rc.2(2026-10-03,Windows,真实 profile 端到端)**:①设置迁移——0.2.0 移除 `settingsScope` 服务与 `settings.plugin.item` 槽位,设置改由宿主按插件 Config schema 自动生成表单;本插件 Config 全字段声明 `.volatile()`(volatile 字段经引用 cell 原位更新,**修改设置不重挂载插件**),客户端经 `configForms` 读写,设置卡同时注册 0.2.0 的 `settings.plugins.tab` 与 0.1.x 的 `settings.plugin.item` 双槽位,宿主各自渲染认识的那一个;②设置卡按 0.2.0 官方设计语言重做(平铺行布局、官方同款分段控件与开关、`configure({auto:false})` 关闭宿主原生表单避免重复);③消息源 `kind:'plugin'` 以结构断言跨过 0.2.0 收窄后的联合类型(运行时按 merge-extensible 容忍);④已在 **0.2.0-rc.2 Web**(按钮、SSE 面板、模型目录 RPC、设置卡读写与撤销、配置写入 profile 补丁且插件不重启)与**官方桌面端**(Electron `DeepSeek Harness 0.2.0-rc.2`,desktop profile 经应用自带 CLI 安装,发送栏按钮与设置卡 UIA 实测)通过验证。
 - **llm 调用标注会话 id(v0.4.0 修复 opencode)**:opencode(`opencode-go`)要求请求携带 `x-opencode-session` 会话头,pi-ai 适配器仅在 `GenerateOptions.sessionId` 存在时注入——插件的一次性调用原本不带,被 API 以缺少请求头拒绝(表现为 opencode 无法测试连接/优化)。现客户端优化请求携带会话 id 由 Host 标注(费用等会话级计量随之正确归属),探活标注固定合成 id;其余适配器视其为模型不可见的传输元数据,不外发。
 - **会话标注恒存在(v0.5.0 补强 opencode)**:v0.4.0 的标注依赖客户端携带会话 id,个别宿主形态不向槽位组件投递 `sessionId` 时请求体会缺失、opencode 依旧报「缺少请求头」。0.5.0 起 Host 侧兜底:客户端未携带(或为空白)时标注合成 id `prompt-optimizer-one-shot`,任何调用路径都满足会话头要求;客户端正常携带时仍用真实会话 id(计量归属不变)。注意旧 profile 里装的插件(0.3.x 及更早)不含修复,升级到 0.5.0+ 并重启宿主/刷新页面。
 - **官方桌面端安装**:桌面应用首次启动初始化 `desktop` profile 后,完全退出应用,用应用自带 CLI 安装并重启:`"E:\Deepseek-Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @y1x1n/dsh-prompt-optimizer`(macOS/Linux 路径见应用安装目录);不要用 npm 版 CLI 管理桌面保留 profile。
 
-- 开发基线:`@deepseek-ai/*` **0.2.1-rc.2**(v0.6.0 起,`sync:types` 与 devDeps 钉同一版本);此前基线为 **0.2.0-rc.2**(v0.4.0 起)、**0.1.5-rc.1**(v0.3.17 起)。已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)、**0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。**0.2.1-rc.2** 于 2026-10-18 完成适配:对上游 `app.asar` 内 0.2.1-rc.2 运行时逐项核对(槽位声明与抛错行为、`ctx.sessions` 提供方、`session/page` 分页语义、`ConfigFormSnapshot` 形状、`engines.dsh` 校验、client baseline 静态模块表),`typecheck` 与四套测试全绿;未在真实 0.2.1 GUI 中点通全流程。
+- 开发基线:`@deepseek-ai/*` **0.2.1-rc.3**(v0.6.2 起,`sync:types` 与 devDeps 钉同一版本);此前基线为 **0.2.1-rc.2**(v0.6.0 起)、**0.2.0-rc.2**(v0.4.0 起)、**0.1.5-rc.1**(v0.3.17 起)。已实测通过 **0.1.0-rc.8**(2026-08-20,Windows,真实 profile 安装 + Web 路由/客户端 bundle/会话历史 RPC/端到端 LLM 调用)、复测通过 **0.1.1-rc.2**(2026-08-27)、适配并通过 **0.1.2-rc.1 与 0.1.2-alpha.5**(2026-09-05/06)、**0.1.5-rc.1**(2026-09-10,真实 profile 端到端冒烟:组合层注入、路由 SSE、client bundle、发送栏按钮与结果面板、设置卡片)、**0.1.5-rc.2**(2026-09-11,全链路复测:组合层注入、Host 加载、路由契约 405/400/200、SSE 端到端 155 帧 delta、四种策略路径、client bundle 槽位与设置卡 API 全部通过,69 项测试全绿)。**0.2.1-rc.2** 于 2026-10-18 完成适配(对上游 `app.asar` 运行时逐项核对,`typecheck` 与四套测试全绿;未在真实 GUI 点通全流程)。**0.2.1-rc.3** 于 2026-10-26 完成适配:上游 6 个 commit 逐项差异核对(见 [`docs/dsh-021-rc3-diff.md`](docs/dsh-021-rc3-diff.md))、类型基线升到 rc.3,并用官方桌面端自带的 rc.3 runtime 引导临时 profile 完成**真实 Web 端到端**(发送栏按钮、结果面板错误态、设置标签页与设置卡读写;LLM 成功输出受测试账户余额限制未验证)。
 - 已在 **macOS** 端通过自动化实测(2026-09-02,macOS 26.5(Darwin 25.5.0),Node.js v26.0.0,`npm install --legacy-peer-deps` 后 `sync:types` / `typecheck` / `build` / `npm test` 全部通过,62 项测试全绿);CI 现同时在 ubuntu-latest 与 macos-latest 上跑 typecheck + 全量测试(@ruijiaang-lab,#3)。
 - **dsh-settings API 兼容层**:0.1.2 线重写了设置 API(独立函数 `installSettingsSection` 移除,改为 `ctx.settings` 服务的 `installSection` 方法)。0.3.16+ 运行时按能力探测自动分派:新 API 存在则走新接口,否则内联等价实现(register+watch+卸载回落),settings 服务整体缺席时回落组合层配置。
 - **客户端类型面随 0.1.2/0.1.5 迁移**(v0.3.17 适配):`dsh-client-runtime` 包已从上游移除,`ClientContext` 即 cordis 的 `Context`;`SettingsScope` 迁至 `@deepseek-ai/dsh-client-ui-settings/client`(其 `SettingsScopeBinder` 自带 `ctx.settingsScope` 的 Context 合并,插件不再重复声明,否则合并冲突);`ctx.slots` 的合并由 `@deepseek-ai/dsh-client-ui-renderer/client` 提供。`HistoryEntry` / `ModelProviderGroup` 迁入未发布的 `dsh-api-session-controller`,插件改在 `src/client/host-faces.ts` 自带最小结构面,不再追上游类型。
 - **会话模型与目录(v0.3.17 起真实可用)**:模型目录走连接层通用 RPC `session/modelCatalog`(`/api` 通道,载荷信封要求恰好一个纯对象 `args` 字段,零参方法即 `{ args: {} }`);「跟随会话」读取官方会话模型目录服务 `ctx.modelDirectories`(`dsh-client-ui-model-selection` 提供,与 /model 弹窗共用同一份目录,其 `current` 即会话实际将使用的模型)。该服务经**独立的可选 inject** 捕获——不能并进主 inject,否则无此服务的宿主会让客户端永远等不到就绪;缺席时回落 Host 回退解析。
 - **会话历史(上下文)在 0.2.x 上已可用(v0.6.0 修复)**:`connection.api.sessions.history` 这一旧查询面上游从未实现过(0.1.0-rc.7 → 0.2.1 全线都不提供),所以 v0.5.0 及更早的「携带会话近期对话」实际一直静默降级。0.2.0/0.2.1 起改走**会话事件窗口**:`ctx.sessions.binding(sessionId).eventSource` 里就是宿主已经灌好的尾部页(`maxMessages:500` / 至少 2 个 turn / 50 条消息,`loadOlder()` 再向前翻页),条目形如 `{type:'event', event}`,据此提炼最近 4 条真实用户输入 + 4 条助手回复。注意 `session/page` RPC 看似可用,但要求调用方先给出 follow 开场帧里的 `throughSeq`;冷调用传 `-1` 会被 `paginate()` 算成 `end=0` 返回空页,因此不采用。该服务经**独立可选 inject** 捕获,0.1.x 宿主无此服务时保持旧降级路径(逐级回退:事件窗口 → legacy 查询面 → 无上下文)。
+- **0.2.1-rc.3 适配要点(v0.6.2)**:rc.3 对本插件是纯加法,`src/` 零行为改动即可无损升级——插件依赖的 `conversation.input.right` / `conversation.input.dock`(仍 `list` / `session`)、`settings.plugins.tab`、composer 标准 props(`useInput` / `inputActions` / `sessionId`)、`ui-slots` / `ConnectionHandle` / `dsh-llm` / `ConfigFormSnapshot` / `SessionSnapshot`、包清单校验与 client `staticModules` 基线均与 rc.2 逐字节相同;ui-conversation 仅新增「更多菜单」槽位与草稿初始化 `whenDraftExists` / `appendDraft`(插件不经过该 API)。本版只做声明层适配:类型基线(`sync:types` 19 包 + devDeps `dsh-client-ui-slots` / `dsh-llm`)升到 0.2.1-rc.3、`package-lock.json` 重新生成、描述/版本/README 更新,并新增 `test/upstream-contract.test.mjs` 把钉版版本与三个槽位契约锁进 CI。上游行为变化提示:官方 API-key 路由的模型列表改为跟随 `/models`(集合可能随账号变化),官方模型上下文窗口标注为 1M;若设置卡固定了已下线模型,调用会以宿主错误结束(面板 error 态可见)。
 - **0.2.1-rc.2 适配要点(v0.6.0)**:①`settings.plugin.item` 槽位已被上游彻底移除(运行时 bundle 与 npm 包双向确认),而 `SlotCore.register` 对未声明槽位是**同步抛错**、`slots.inject` 的异常还会被 `queueMicrotask` 抛成页面级未捕获错误——旧实现把 `settings.plugins.tab` 与 `settings.plugin.item` 放在同一个 `slots.inject` 回调里,在 0.2.1 上会先注册成功再抛错;现改为**两个槽位各自独立 inject**,任一未声明都只跳过自己(`test/slot-guard.test.mjs` 用真实 `SlotCore` 固化该边界)。②`ConfigFormSnapshot` 删除了 `mode: 'host' | 'memory'`,内存模式不复存在,设置卡文案随之去掉「内存模式」措辞并改用 `settings.readOnly`。③`package.json` 补 `dsh.manifestVersion: 1` 与 `engines.dsh`。④类型基线(baseline)钉到 `0.2.1-rc.2`。
 - **客户端槽位 props 双形态**:0.1.2 起 composer 槽位改为 session scope,组件经 standard hooks(`useInput`/`useSession`)读取会话与草稿状态,注册需采用「注入回调内 scope 化注册 + `inject(sessionId)` 钩子」的官方双层形态。组件按 props 形态自动分派(0.1.2 走 hooks,旧版读直传快照),两种宿主共用同一份构建。
 - **client bundle 注册 id**:`lib/client.js` 的 loader id 必须等于插件 npm 包名(宿主 client-modules 按包名校验注册);client 注入列表已随 0.1.2 移除已合并的 `dsh-client-runtime`。0.1.5 起 bundle 以 `/plugins/??<id>/client.js,…&rev=<hash>` 组合 URL 提供,单插件裸路径不再单独暴露(以 boot manifest 里的组合 URL 为准)。
@@ -157,16 +159,18 @@ dsh plugin --profile web remove @y1x1n/dsh-prompt-optimizer
 
 ## 验证状态
 
-已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);**v0.3.17 起 0.1.5-rc.1 完成端到端实测**(2026-09-10,Windows,真实 profile + 浏览器驱动:发送栏「优化」按钮随输入启停、点击后面板打开并按 SSE 透传上游错误、设置卡片折叠摘要与展开配置齐全),**并在 0.1.5-rc.2 上完成全链路复测**(2026-09-11:组合层注入、Host 加载、路由契约、SSE 端到端、四种策略路径、client bundle 槽位与设置卡 API 全项通过);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
+**v0.6.2 在真实 0.2.1-rc.3 Web 端到端验证**(2026-10-26,Windows,官方桌面端自带的 rc.3 runtime CLI 引导临时 profile + 浏览器驱动):安装发布的 tgz 后 Host 启动日志出现 `[dsh-prompt-optimizer] loaded`、路由已注册;页面发送栏「优化」按钮随输入出现并带本插件样式类;点击后结果面板打开,请求经 Host 路由与 SSE 返回上游错误(`QUOTA: Insufficient Balance`,测试账户余额为 0——错误态与透传链路由此验证);设置页「内置插件 → 提示词优化」标签页与设置卡完整渲染,切换输出语言后写入持久化到 profile 的 `cordis.patch.yml`。已在真实环境验证(dsh 0.1.0-rc.8 实测 + 0.1.1-rc.2 复测,Windows,详见「兼容性」);macOS 端自动化实测通过(2026-09-02,macOS 26.5,62 项测试全绿,CI 亦常驻 macos-latest 跑全量测试);**v0.3.16 起 0.1.2 线(dsh 0.1.2-rc.1 / 0.1.2-alpha.5)完成端到端实测**(发送栏按钮、结果面板、设置卡片、优化路由与 SSE);**v0.3.17 起 0.1.5-rc.1 完成端到端实测**(2026-09-10,Windows,真实 profile + 浏览器驱动:发送栏「优化」按钮随输入启停、点击后面板打开并按 SSE 透传上游错误、设置卡片折叠摘要与展开配置齐全),**并在 0.1.5-rc.2 上完成全链路复测**(2026-09-11:组合层注入、Host 加载、路由契约、SSE 端到端、四种策略路径、client bundle 槽位与设置卡 API 全项通过);v0.3.9–0.3.11 另在**第三方免费模型**(openrouter 的 `minimax/minimax-m3:free`,不输出标记格式)上完成端到端实测:模板/意图双策略、保真逐要素保留、待补充标记、记忆链与取消保留等行为均按设计工作,并据此修复了快速模式的格式误报。
 
 - 组合层加载:`--dump-config` 出现 `# == @y1x1n/dsh-prompt-optimizer` 层;
 - Host:启动日志 `[dsh-prompt-optimizer] loaded`,优化路由与测试路由的 400/405/409/413 各路径行为正确,SSE 流式输出实测正常;
 - Client:bundle 被 client-modules 扫描收录并出现在页面 boot manifest(0.1.5 起以 `/plugins/??<ids>&rev=<hash>` 组合 URL 提供),插件行出现在模块清单中;
-- 端到端:真实调用 `ctx.llm`(DeepSeek 路由)完成「分析 + 优化」,标记解析正确(`wellFormed: true`)。
-- 自动化测试(`npm test`,共 85 例):
+- 端到端:真实调用 `ctx.llm`(DeepSeek 路由)完成「分析 + 优化」,标记解析正确(`wellFormed: true`);v0.6.2 的 rc.3 复测因测试账户余额为 0,只验证到上游错误态与面板透传,成功输出沿用此前版本实测。
+- 自动化测试(`npm test`,共 99 例):
   - `test/smoke.mjs`:35 项 Host 冒烟用例(真实 cordis Context + mock 服务,覆盖路由解析优先级、空字符串/畸形配置、400/405/409/413、非对象 JSON 体拒绝、SSE 事件流、SSE 阶段错误不逃出路由、并发上限 429、载体服务只挂载一次、max-tokens 截断、超时、快速模式与默认模式、推理钳档(按强度序数而非展示顺序)、旧版设置文档归一化、连接测试、会话标注兜底、回退链与回退原因透传、tool-calls 防御、输出上限自适应、上下文注入与硬开关、策略选择、记忆链注入与截断、来源围栏);
-  - `test/prompt.test.mjs`:24 项元提示词解析用例(标记空白变体、降级路径、空 OPTIMIZED 段不回退、标记字样不进入结果、未闭合思考块不污染解析、流式实况解析、新旧两种输出顺序、流式缓冲压缩(单段/两段式)、token 估算 CJK 覆盖、上下文载荷与预算收敛、策略分叉、保真纪律与示例、记忆链载荷);
-  - `test/controller.test.mjs`:26 项客户端纯逻辑用例(SSE 帧解析与损坏帧跳过、合帧节流、连接中断、跳过会话查询、撤回流转、retry 保留斜杠前缀、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底、新输出顺序的流式预览与压缩兜底)。
+  - `test/prompt.test.mjs`:25 项元提示词解析用例(标记空白变体、降级路径、空 OPTIMIZED 段不回退、标记字样不进入结果、未闭合思考块不污染解析、流式实况解析、新旧两种输出顺序、流式缓冲压缩(单段/两段式)、token 估算 CJK 覆盖、上下文载荷与预算收敛、策略分叉、保真纪律与示例、记忆链载荷);
+  - `test/controller.test.mjs`:29 项客户端纯逻辑用例(SSE 帧解析与损坏帧跳过、合帧节流、连接中断、跳过会话查询、撤回流转、retry 保留斜杠前缀、close 中止、cancel 取消保留已生成部分及其状态门槛、客户端超时看门狗、历史提取过滤与失败降级、斜杠前缀拆分与空命令拦截、记忆链传递与门槛、发送即关闭判定、耗时记录、上下文取样用户消息保底、新输出顺序的流式预览与压缩兜底);
+  - `test/slot-guard.test.mjs`:5 项槽位守卫(`s1–s4` 对真实上游 `SlotCore` 固化「未声明槽位同步抛错 + 独立 inject 守卫」边界,`s5` 加载真实 `lib/client.js` 并调用真实 `apply()`);
+  - `test/upstream-contract.test.mjs`:5 项上游契约守卫(v0.6.2 新增;钉版包安装版本一致性、composer 两槽位仍为 list/session、composer 标准 props 仍在、`settings.plugins.tab` 类型与运行时声明仍在、legacy `settings.plugin.item` 仍不存在)。
 
 ## 工作原理
 
