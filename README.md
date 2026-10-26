@@ -201,7 +201,7 @@ npm install --legacy-peer-deps   # 安装依赖并触发构建
 npm run sync:types               # 同步客户端类型包(见下)
 npm run typecheck                # tsc --noEmit
 npm run build                    # 产出 lib/{index,client,prompt,controller}.js
-npm test                         # smoke + prompt + controller 三套测试
+npm test                         # smoke + prompt + controller + slot-guard + upstream-contract 五套测试
 ```
 
 ### 关于 `sync:types`

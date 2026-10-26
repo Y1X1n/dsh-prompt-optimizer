@@ -54,18 +54,50 @@ if (missing.length > 0) {
 }
 
 // u1. 已安装钉版包版本必须与基线一致(防止旧 node_modules 残留)
-for (const name of REQUIRED) {
-  const installed = readJson(`node_modules/@deepseek-ai/${name}/package.json`)
-  assert.equal(installed.version, pins[name], `${name} 已安装版本 ${installed.version} ≠ 钉版 ${pins[name]}`)
+{
+  const checked = []
+  const missingPins = []
+  for (const [shortName, version] of Object.entries(pins)) {
+    const rel = `node_modules/@deepseek-ai/${shortName}/package.json`
+    if (!existsSync(new URL(rel, root))) {
+      missingPins.push(shortName)
+      continue
+    }
+    const installed = readJson(rel)
+    assert.equal(installed.version, version, `${shortName} 已安装版本 ${installed.version} ≠ 钉版 ${version}`)
+    checked.push(shortName)
+  }
+  assert.deepEqual(missingPins, [], `sync:types 的钉版包必须全部安装到位(缺少 ${missingPins.join(', ')})`)
+  const llmVersion = pkg.devDependencies['@deepseek-ai/dsh-llm']
+  assert.equal(readJson('node_modules/@deepseek-ai/dsh-llm/package.json').version, llmVersion, 'dsh-llm 已安装版本必须等于 devDep 钉版')
+  assert.equal(llmVersion, pinned, 'dsh-llm devDep 必须与类型基线同版本')
+  console.log(`✓ u1 钉版包已安装且版本一致(${checked.length} 个 + dsh-llm ${pinned})`)
 }
-assert.equal(readJson('node_modules/@deepseek-ai/dsh-llm/package.json').version, pkg.devDependencies['@deepseek-ai/dsh-llm'], 'dsh-llm 已安装版本必须等于 devDep 钉版')
-console.log(`✓ u1 钉版包已安装且版本一致(${REQUIRED.length} 个 + dsh-llm ${pinned})`)
+
+/** 取出 `'slot.name': { ... }` 的整段声明(按花括号配平,不依赖上游排版)。 */
+function slotDeclaration(text, slot) {
+  const key = new RegExp(`['"]${slot.replaceAll('.', '\\.')}['"]`).exec(text)
+  if (!key) return undefined
+  const open = text.indexOf('{', key.index)
+  if (open < 0) return undefined
+  let depth = 0
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(open, i + 1)
+    }
+  }
+  return undefined
+}
 
 // u2. 插件注册的两个 composer 槽位仍被声明为 list/session
 const conversationSlots = readText('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/contract/slots.d.ts')
 for (const slot of ['conversation.input.right', 'conversation.input.dock']) {
-  const declared = new RegExp(`['"]${slot.replaceAll('.', '\\.')}['"]\\s*:\\s*\\{[\\s\\S]{0,160}?kind:\\s*['"]list['"][\\s\\S]{0,80}?scope:\\s*['"]session['"]`).test(conversationSlots)
-  assert.ok(declared, `${slot} 必须仍声明为 kind:'list' / scope:'session'`)
+  const block = slotDeclaration(conversationSlots, slot)
+  assert.ok(block, `${slot} 必须仍被声明`)
+  assert.match(block, /kind:\s*['"]list['"]/, `${slot} 必须仍为 kind:'list'`)
+  assert.match(block, /scope:\s*['"]session['"]/, `${slot} 必须仍为 scope:'session'`)
 }
 console.log('✓ u2 conversation.input.right / conversation.input.dock 契约不变')
 

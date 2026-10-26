@@ -46,12 +46,23 @@
 
 ### 真实 0.2.1-rc.3 Web 端到端(v0.6.2 新增)
 
-2026-10-26,Windows,使用**官方桌面端自带的 rc.3 runtime CLI**(`E:\DSH\resources\runtime\cli\bin\dsh.cmd`,`--version` = `0.2.1-rc.3`)引导一个临时 profile,安装本版发布的 tgz 后启动 Web:
+2026-10-26,Windows,使用**官方桌面端自带的 rc.3 runtime CLI**(`E:\DSH\resources\runtime\cli\bin\dsh.cmd`,`--version` = `0.2.1-rc.3`)引导一个临时 profile。验证分两段,避免把 0.6.1 的行为记到 0.6.2 头上:
+
+1. 先用 0.6.1 的构建跑通链路(按钮 / 面板 / 设置读写),确认 rc.3 宿主本身可用;
+2. 再以**本版最终 tgz(0.6.2)** 重装并复验:详情页显示 v0.6.2 / 来源 `...0.6.2.tgz` / 运行中,发送栏「优化」按钮与设置标签页、设置卡正常,并**再次双向切换输出语言**——写入分别落到 profile 的 `cordis.patch.yml`(`language: en` @ 15:19:33,`language: zh` @ 15:19:58),证明 `configForms` 读写与持久化在 0.6.2 × rc.3 上正常。
 
 - Host:启动日志 `[dsh-prompt-optimizer] loaded, POST /dsh-prompt-optimizer/optimize`,路由注册成功;宿主没有报 manifest / engines 版本不兼容;
 - Client:发送栏出现带 `.dsh-po-btn.dsh-po-opt` 类的「优化」按钮;输入草稿后按钮可用;
-- 结果面板:点击「优化」后面板打开,请求经 Host 路由与 SSE 返回上游错误(`QUOTA: Insufficient Balance`;测试账户余额为 0),面板正确展示错误态 —— 错误透传链路因此得到真实验证;
-- 设置页:设置 → 内置插件 → 「提示词优化」标签页出现,设置卡完整渲染(模型 / 回退模型 / 调用参数 / 上下文等);切换「输出语言」后写入落到临时 profile 的 `cordis.patch.yml`(`language: en`),再切回中文,证明 `configForms` 读写与持久化在 rc.3 上正常。
+- 结果面板:点击「优化」后面板打开,请求经 Host 路由与 SSE 返回上游错误:
+
+  ```
+  模型调用失败(QUOTA): Insufficient Balance (request_id: df550b62-780e-44ac-953c-8f3cd22490ef)
+  ```
+
+  测试账户余额为 0,因此验证的是**错误态与透传链路**而非「优化成功」;成功输出沿用此前版本(0.1.x/0.2.0 线)的实测。
+- 设置页:设置 → 内置插件 → 「提示词优化」标签页出现,设置卡完整渲染(模型 / 回退模型 / 调用参数 / 上下文等);输出语言写入见上。
+
+![rc.3 结果面板错误态(QUOTA 透传)](screenshots/rc3-e2e-panel-error.png)
 
 ### 静态 / 自动化
 
@@ -75,7 +86,7 @@
 
 | dsh 版本 | 优化路由 / 模型调用 | 设置页 | 发送栏 / 面板 | 会话上下文 |
 |---|---|---|---|---|
-| **0.2.1-rc.3**(Web + 官方桌面端运行时) | ✅ 实测 | ✅ 实测 | ✅ 实测 | ✅ 契约核对 |
+| **0.2.1-rc.3**(Web + 官方桌面端运行时) | ✅ 实测(路由/SSE/错误态) | ✅ 实测 | ✅ 实测 | ✅ 契约核对 |
 | **0.2.1-rc.2** | ✅ | ✅ | ✅ | ✅ |
 | **0.2.0-rc.2** | ✅ | ✅ | ✅ | ✅ |
 | 0.1.5-rc.2 / 0.1.5-rc.1 | ✅ | ✅ | ✅ | 降级 |

@@ -457,7 +457,7 @@ node-addon-system@0.1.2
 ### 5.5 v0.6.2 实际发布补充
 
 - **新增 `test/upstream-contract.test.mjs`(5 项)**:把「已安装钉版版本 == sync-types 钉版」「两个 composer 槽位仍为 list/session」「composer 标准 props 仍在」「`settings.plugins.tab` 类型 + 运行时声明仍在」「legacy `settings.plugin.item` 仍不存在」锁进 CI。这样下一轮上游升级动了这些面时,CI 会直接失败,而不是等到线上静默降级。
-- **真实 rc.3 Web 端到端**:用官方桌面端自带的 rc.3 runtime CLI 引导临时 profile 并安装 0.6.2 tgz——Host 日志 `[dsh-prompt-optimizer] loaded`、路由注册;页面发送栏「优化」按钮、结果面板(上游 `QUOTA` 错误态)、设置标签页与设置卡渲染、设置写入落盘到 profile `cordis.patch.yml` 均已实测。
+- **真实 rc.3 Web 端到端**:用官方桌面端自带的 rc.3 runtime CLI 引导临时 profile。先用 0.6.1 构建跑通链路,再以最终 0.6.2 tgz 重装复验——Host 日志 `[dsh-prompt-optimizer] loaded`、路由注册;页面发送栏「优化」按钮、结果面板(上游 `QUOTA: Insufficient Balance`,request_id `df550b62-780e-44ac-953c-8f3cd22490ef`,截图见 `docs/screenshots/rc3-e2e-panel-error.png`)、设置标签页与设置卡渲染、输出语言双向写入落盘到 profile `cordis.patch.yml`(`language: en` @ 15:19:33 → `language: zh` @ 15:19:58)均已实测。
 - **测试统计**:`npm test` 五套 / 99 项全绿(smoke 35 / prompt 25 / controller 29 / slot-guard 5 / upstream-contract 5)。
 
 ---

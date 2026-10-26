@@ -200,7 +200,7 @@ npm install --legacy-peer-deps   # install deps and trigger the build
 npm run sync:types               # sync the client type packages (see below)
 npm run typecheck                # tsc --noEmit
 npm run build                    # produces lib/{index,client,prompt,controller}.js
-npm test                         # smoke + prompt + controller suites
+npm test                         # smoke + prompt + controller + slot-guard + upstream-contract suites
 ```
 
 ### About `sync:types`
