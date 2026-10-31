@@ -441,6 +441,8 @@ function OZ(){return{react:aC,"react/jsx-runtime":dC,"react-dom":gC,"react-dom/c
 | `package-lock.json` | 锁文件 | 工作区已重新生成,`@deepseek-ai/*` 全部 rc.5 | 已改(保持) |
 | `README*.md` / `docs/release-*.md` | 兼容性声明 | 仍宣称 rc.3;`docs/release-v0.6.3.md` 尚不存在 | **建议改** |
 
+> **执行结果(2026-10-31)**:上表 4–5 项已全部落地——README 兼容声明已升到 v0.6.3 / rc.5(新增 rc.5 实测行、开发基线与适配要点),`docs/release-v0.6.3.md` 已创建。以下 §5.1/§5.2 中标注「⏳ 未做」的条目均为**调研期快照**,发布前已全部完成。 |
+
 > 说明:本轮调研期间,工作区里并行的适配工作已经把 `package.json`、`package-lock.json`、`scripts/sync-types.mjs` 改成 rc.5(我在 `git diff` 与 `node_modules` 实测中确认)。本调研**未修改**这三个文件(超出本任务写权限),仅作核对与记录。
 
 ---
@@ -493,9 +495,9 @@ rc.3 轮记录的两处提示在 rc.5 上**保持不变**(不是本轮回归):
 ### 5.2 建议改(声明/文档层,不影响运行)
 
 4. **`README.md` / `README.en.md`** —— 兼容声明升到 v0.6.3 / rc.5:在兼容表加 `0.2.1-rc.4`、`0.2.1-rc.5` 行;「开发基线」段落改为 rc.5;新增「0.2.1-rc.5 适配要点」;更新验证状态(本轮 typecheck + 99 项测试 + asar/npm 逐字节核对)。
-   状态:⏳ 未做(建议在 prepare release 时补)。
+   状态:✅ 已完成(v0.6.3)。
 5. **`docs/release-v0.6.3.md`** —— 新 release notes:结论(纯声明层适配、`src/` 零改动)、证据链接(本文档)、验证项(typecheck/test/asar 与 npm 一致性)、以及 §4.2 的提示。
-   状态:⏳ 未做。
+   状态:✅ 已完成(v0.6.3)。
 6. **`docs/dsh-021-rc3-diff.md` / `docs/dsh-021-diff.md`** —— 历史文档,**不修改**(保留存档);新文档即本文件。
 7. **`test/upstream-contract.test.mjs`** —— **不需要改**(u1 断言「已安装版本 == `sync-types` 钉版」,天然跟随钉版升级;u2-u5 在 rc.5 上实测全过)。
    可选加强(非必需):加一条「`conversation.chat.reasoning.body` 自 rc.5 起 owner props 含必填 `rawText`」的注释或断言,作为**未来若新增该槽位占用时的提醒**;当前插件不占用该槽位,不加也不影响正确性。
