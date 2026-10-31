@@ -21,7 +21,7 @@ const root = resolve(import.meta.dirname, '..')
 const nmDir = join(root, 'node_modules', '@deepseek-ai')
 
 /**
- * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.2.1-rc.3 的内置包一致)。
+ * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.2.1-rc.5 的内置包一致)。
  *
  * 0.1.2 起上游把客户端运行时拆进了消费方:`dsh-client-runtime` 与
  * `dsh-host-apiproxy` 不再发布(restricted),`ClientContext` 由 cordis 的
@@ -29,25 +29,25 @@ const nmDir = join(root, 'node_modules', '@deepseek-ai')
  * (`dsh-client-ui-settings` 只提供 configForms),设置面改走本插件自带的结构面。
  */
 const PACKAGES = {
-  'dsh-client-connection': '0.2.1-rc.3',
-  'dsh-client-ui-slots': '0.2.1-rc.3',
-  'dsh-client-ui-conversation': '0.2.1-rc.3',
-  'dsh-client-ui-session': '0.2.1-rc.3',
-  'dsh-client-ui-settings': '0.2.1-rc.3',
-  'dsh-client-ui-settings-plugins': '0.2.1-rc.3',
-  'dsh-client-ui-renderer': '0.2.1-rc.3',
-  'dsh-api-remotes': '0.2.1-rc.3',
-  'dsh-attachment': '0.2.1-rc.3',
-  'dsh-brand': '0.2.1-rc.3',
-  'dsh-client-locale': '0.2.1-rc.3',
-  'dsh-client-ui-primitives': '0.2.1-rc.3',
-  'dsh-commands': '0.2.1-rc.3',
-  'dsh-llm-retry': '0.2.1-rc.3',
-  'dsh-session': '0.2.1-rc.3',
-  'dsh-session-projection': '0.2.1-rc.3',
-  'dsh-token-meter': '0.2.1-rc.3',
-  'dsh-tool-todo': '0.2.1-rc.3',
-  'dsh-tools': '0.2.1-rc.3',
+  'dsh-client-connection': '0.2.1-rc.5',
+  'dsh-client-ui-slots': '0.2.1-rc.5',
+  'dsh-client-ui-conversation': '0.2.1-rc.5',
+  'dsh-client-ui-session': '0.2.1-rc.5',
+  'dsh-client-ui-settings': '0.2.1-rc.5',
+  'dsh-client-ui-settings-plugins': '0.2.1-rc.5',
+  'dsh-client-ui-renderer': '0.2.1-rc.5',
+  'dsh-api-remotes': '0.2.1-rc.5',
+  'dsh-attachment': '0.2.1-rc.5',
+  'dsh-brand': '0.2.1-rc.5',
+  'dsh-client-locale': '0.2.1-rc.5',
+  'dsh-client-ui-primitives': '0.2.1-rc.5',
+  'dsh-commands': '0.2.1-rc.5',
+  'dsh-llm-retry': '0.2.1-rc.5',
+  'dsh-session': '0.2.1-rc.5',
+  'dsh-session-projection': '0.2.1-rc.5',
+  'dsh-token-meter': '0.2.1-rc.5',
+  'dsh-tool-todo': '0.2.1-rc.5',
+  'dsh-tools': '0.2.1-rc.5',
 }
 
 mkdirSync(nmDir, { recursive: true })
@@ -59,7 +59,7 @@ try {
   for (const [shortName, version] of Object.entries(PACKAGES)) {
     const target = join(nmDir, shortName)
     // 只在「已存在且版本正好是钉的版本」时跳过。原先只看目录是否存在,
-    // 于是把 PACKAGES 的钉版本从 0.2.0-rc.2 升到 0.2.1-rc.3 之后,
+    // 于是把 PACKAGES 的钉版本从 0.2.0-rc.2 升到 0.2.1-rc.5 之后,
     // 本机已有的旧目录永远不会被刷新,typecheck 实际仍跑在旧类型上。
     if (existsSync(target)) {
       const installed = (() => {
