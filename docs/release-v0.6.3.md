@@ -45,7 +45,7 @@
 
 - Host:启动日志 `[dsh-prompt-optimizer] loaded, POST /dsh-prompt-optimizer/optimize`;宿主未报 manifest / engines 不兼容;
 - 发送栏:出现带 `.dsh-po-btn.dsh-po-opt` 类的「优化」按钮,空草稿时 disabled;在编辑器键入草稿后**自动变为 enabled**;
-- 优化面板:点击按钮 → 面板打开 → 流式输出 → 约 7.0s 后**成功产出优化稿**,面板出现「替换输入框 / 复制 / 重新优化 / 关闭」,徽章显示 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 7.0s`;
+- 优化面板:点击按钮 → 面板打开 → 流式输出 → 约 6–7s 后**成功产出优化稿**(两次实测分别为 7.0s 与 5.9s),面板出现「替换输入框 / 复制 / 重新优化 / 关闭」,徽章显示 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 7.0s`(截图那次为 `· 用时 5.9s`);
 - 设置页:设置 → 内置插件 → 「提示词优化」标签页正常出现,设置卡完整渲染,模型下拉列出宿主全部目录(含 routing group 与 NVIDIA NIM 等分组);
 - 全程浏览器控制台**零错误**(Runtime.exceptionThrown / console.error / log.error 均无记录)。
 
