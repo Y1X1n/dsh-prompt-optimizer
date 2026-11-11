@@ -198,7 +198,7 @@ export function createResultDock(controller: OptimizerController) {
     const applied = state.applied
     const draft = input.draft ?? ''
     // 0.2.2 起宿主在确认接收前保留草稿,提交阶段由 `phase:'sending'` 表达;
-    // 旧宿主没有该字段,缺省即不参与判定。
+    // 旧宿主 phase 只有前四个值,不含 sending,天然不参与该判定。
     const phase = input.phase
     const running = Boolean(session.running)
     const queued = session.queue?.length ?? 0

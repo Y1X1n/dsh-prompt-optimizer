@@ -12,7 +12,7 @@
 1. **上游语义**:`gh api repos/deepseek-ai/deepseek-harness/compare/dsh-v0.2.1-rc.5...dsh-v0.2.2-rc.1`。compare 显示 **2623 个 commit ahead**(API 的 commits 列表返回前 250 个),`files` 返回上限 300 个;`0.2.2-rc.1` 是该分支线经历 alpha.2 / alpha.3 后的首个候选版本,release notes 已汇总用户与开发者变更。
 2. **npm 类型实测**:对插件类型基线的 19 个包 + `dsh-llm`/`dsh-api-session-controller`/`dsh-settings`/`dsh-package-manifest`/`dsh-app-boot`/`dsh-web-frontend` 等共 24 个包,用 `npm pack` 下载 `0.2.1-rc.5` 与 `0.2.2-rc.1` 两组 tarball,解包后对 `lib/**` 做**逐文件字节比对**,`package.json` 做字段级 diff。
 3. **桌面端实测**:用自写 ASAR header reader 读取 `E:\DSH\resources\app.asar`,取全部 `@deepseek-ai/*` 包版本、`dsh-web-frontend` 的 `staticModules` 映射、槽位声明与运行时 bundle。
-4. **关键契约块哈希**:对槽位声明块、`SessionStandardProps`、`setDraft`/`draft` 等逐块取 SHA-256 前 16 位,确认「块级相同」而不是整文件相同(注释改动不影响契约)。
+4. **关键契约块/行哈希**:对槽位声明块、`InputActions.setDraft`、`InputState.draft` 等逐块取 SHA-256 前 16 位,确认「块级相同」而不是整文件相同(注释改动不影响契约)。
 5. **插件侧实测**:工作区钉基线与 `node_modules` 均为 0.2.2-rc.1,跑 `tsc --noEmit`、`npm test`(5 套 / 100 项);并用官方桌面端自带的 `0.2.2-rc.1` runtime CLI 引导独立 profile,做真实 Web 端到端。
 
 ### 0.1 与插件相关的上游主线变化(节选)
@@ -46,7 +46,7 @@
 | `settings.section.icon` | **新增可选槽位**(`inline:true`,`SettingsSectionIconOwnerProps`) | 插件不注册 settings section,不涉及 | 无需改 |
 | `settings.plugin.item`(0.1.x legacy) | **仍不存在**(类型与运行时 0 命中) | 独立 `inject` 守卫前提仍成立 | 无需改 |
 | `ui-slots` | `.d.ts` 与 `lib/index.js` **全部相同**,仅 `package.json` 版本/peer 变化 | `ctx.slots` 注册与 `PropsRuntime` 不变 | 无需改 |
-| `ui-renderer` | `lib/types/client/index.d.ts` **逐字节相同**(仅新增 locale 文件) | `ctx.slots` 合并来源不变 | 无需改 |
+| `ui-renderer` | `lib/types/client/index.d.ts` **逐字节相同**;包内仅新增 6 个 locale JSON | `ctx.slots` 合并来源不变 | 无需改 |
 | `ui-conversation` 输入契约 | 新增 `insertQuote`、`DraftQuote`、`quotes`;发送尝试快照补充引用/附件;`phase` 增加 `sending` | `setDraft`/`draft` 不变;新增项均为加法 | 已适配 `sending` |
 | `ui-conversation` slots | 两个 composer 槽位声明块不变;新增文档说明「fixed 浮层须 portal」 | 结果面板内联渲染,不受影响 | 无需改 |
 | `ui-session` | 新增 `whenAccess`;`SessionStandardProps` 不变 | `useSession` 读取 `running`/`pendingSubmissions` 面不变 | 无需改 |
@@ -75,7 +75,7 @@
 | `conversation.input.right` | `42609d09c15c01e2` | `42609d09c15c01e2` | 相同 |
 | `conversation.input.dock` | `3877c57ff1a60932` | `3877c57ff1a60932` | 相同 |
 | `settings.plugins.tab` | `2e49302e62eee7c7` | `2e49302e62eee7c7` | 相同 |
-| `SessionStandardProps`(ui-conversation) | `b5828ace4c94d05d` | `b5828ace4c94d05d` | 相同 |
+| `SessionStandardProps`(ui-conversation) | — | — | 块级 diff 相同 |
 
 `InputActions.setDraft` 与 `InputState.draft` 的行级哈希两版相同;`InputState.phase` 因新增 `'sending'` 而不同(预期)。
 
@@ -87,7 +87,7 @@
 2. 草稿、引用与附件在**宿主确认接收前保留**;
 3. 确认接收后才清空草稿并显示消息;失败时草稿原样保留。
 
-对插件的含义:原「发送即关闭」只靠「草稿清空 / `running` 翻转 / 队列增长」三条信号,在新语义下要等宿主确认,面板会在发送等待期间继续占着 dock。本轮在 `shouldAutoClose` 增加 `phase === 'sending'` 信号(旧宿主无该字段,自动忽略),并在结果面板读取 `InputState.phase`;`loading` 期间仍不关闭,避免打断正在跑的优化。
+对插件的含义:原「发送即关闭」只靠「草稿清空 / `running` 翻转 / 队列增长」三条信号,在新语义下要等宿主确认,面板会在发送等待期间继续占着 dock。本轮在 `shouldAutoClose` 增加 `phase === 'sending'` 信号(旧宿主 phase 不含该值,自动忽略),并在结果面板读取 `InputState.phase`;`loading` 期间仍不关闭,避免打断正在跑的优化。
 
 ### 2.3 引用 / 附件 / 设置图标(均为加法)
 
@@ -115,7 +115,7 @@
 
 - `shouldAutoClose` 增加可选 `phase?: string`,命中 `'sending'` 即视为已发送;
 - 结果面板从 `useInput` 快照读取 `phase` 并传入,依赖数组同步;
-- 单测新增 4 条断言:`sending` 关闭、`plain` 不关闭、`sending + loading` 不打断优化;
+- 单测新增 3 条断言:`sending` 关闭、`plain` 不关闭、`sending + loading` 不打断优化;
 - 上游契约守卫新增 `u3b`:锁定 `setDraft` / `draft` / `phase:'sending'` 仍在。
 
 ### 3.2 版本与依赖
