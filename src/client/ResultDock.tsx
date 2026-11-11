@@ -168,12 +168,12 @@ export function createResultDock(controller: OptimizerController) {
     const p = props as ResultDockProps & {
       useInput?: (selector: (s: unknown) => unknown) => unknown
       useSession?: (selector: (s: unknown) => unknown) => unknown
-      input?: { draft?: string }
+      input?: { draft?: string; phase?: string }
       session?: { running?: boolean; queue?: unknown[] }
       sessionId?: string
       inputActions?: { setDraft(text: string): void }
     }
-    const input = (p.useInput ? (p.useInput((s: unknown) => s) as { draft?: string }) : p.input) ?? {}
+    const input = (p.useInput ? (p.useInput((s: unknown) => s) as { draft?: string; phase?: string }) : p.input) ?? {}
     const session = (p.useSession ? (p.useSession((s: unknown) => s) as { running?: boolean; queue?: unknown[] }) : p.session) ?? {}
     const inputActions = p.inputActions
     // controller 是会话间共享的单例:面板只对发起优化的那个会话渲染,
@@ -197,6 +197,9 @@ export function createResultDock(controller: OptimizerController) {
     // 顺带限定 owns:其他会话的 dock 实例不得因自身状态变化影响本会话的撤回依据。
     const applied = state.applied
     const draft = input.draft ?? ''
+    // 0.2.2 起宿主在确认接收前保留草稿,提交阶段由 `phase:'sending'` 表达;
+    // 旧宿主没有该字段,缺省即不参与判定。
+    const phase = input.phase
     const running = Boolean(session.running)
     const queued = session.queue?.length ?? 0
     const prevRef = useRef({ running, queued })
@@ -204,7 +207,7 @@ export function createResultDock(controller: OptimizerController) {
       const prev = prevRef.current
       prevRef.current = { running, queued }
       if (!owns) return
-      if (shouldAutoClose({ open: true, status: state.status, draft, prevRunning: prev.running, running, prevQueued: prev.queued, queued })) {
+      if (shouldAutoClose({ open: true, status: state.status, draft, phase, prevRunning: prev.running, running, prevQueued: prev.queued, queued })) {
         controller.close()
         return
       }
@@ -212,7 +215,7 @@ export function createResultDock(controller: OptimizerController) {
       // 撤回会覆盖用户编辑,此时撤掉撤回入口。
       if (applied && draft !== applied.text) controller.clearApplied()
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [draft, applied, owns, state.status, running, queued])
+    }, [draft, phase, applied, owns, state.status, running, queued])
 
     // loading 期间的耗时读数:进入 loading 起每秒刷新,离开即停。
     const [elapsed, setElapsed] = useState(0)
