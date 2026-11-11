@@ -60,22 +60,31 @@ export function joinLast(last: { text: string; prefix?: string }): string {
 }
 
 /**
- * 发送即关闭面板的判定(纯函数,便于测试)。三条信号任一命中即认为消息已发出:
- * 草稿被清空(直发/入队都会清,用户手动清空同理——面板引用的草稿已不存在)、
+ * 发送即关闭面板的判定(纯函数,便于测试)。四条信号任一命中即认为消息已发出:
+ * 发送阶段(0.2.2 起 `phase:'sending'`,宿主确认接收前草稿仍保留)、
+ * 草稿被清空(宿主确认接收后的直发/入队,用户手动清空同理——面板引用的草稿已不存在)、
  * 会话开始运行(直发)、队列变长(忙时入队)。
  * loading(优化中)期间一律不关:发送/清空不应误中止在跑的优化,取消走 Esc。
+ * 旧宿主(0.1.x / 0.2.0 / 0.2.1)的 phase 只有前四个值,不含 'sending',天然不触发。
  */
 export function shouldAutoClose(input: {
   open: boolean
   status: 'idle' | 'loading' | 'done' | 'error' | 'cancelled'
   draft: string
+  /** 0.2.2+ 的提交阶段;旧宿主不含 'sending',不参与新判定。 */
+  phase?: string
   prevRunning: boolean
   running: boolean
   prevQueued: number
   queued: number
 }): boolean {
   if (!input.open || input.status === 'loading') return false
-  return !input.draft.trim() || (!input.prevRunning && input.running) || input.queued > input.prevQueued
+  return (
+    input.phase === 'sending' ||
+    !input.draft.trim() ||
+    (!input.prevRunning && input.running) ||
+    input.queued > input.prevQueued
+  )
 }
 
 /** 摊平 content blocks 为纯文本(图片等非文本块对优化意图无帮助,忽略)。 */

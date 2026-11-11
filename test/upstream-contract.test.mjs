@@ -108,6 +108,13 @@ for (const prop of ['useInput', 'inputActions']) {
 assert.match(conversationSlots, /sessionId/, 'composer 标准 props 缺少 sessionId')
 console.log('✓ u3 composer 标准 props(useInput/inputActions/sessionId)仍在')
 
+// u3b. 插件读写草稿与发送阶段的依赖面仍在
+const inputContract = readText('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/contract/input.d.ts')
+assert.match(inputContract, /setDraft\(text: string\): void/, 'InputActions.setDraft 签名变化')
+assert.match(inputContract, /readonly draft: string/, 'InputState.draft 字段缺失')
+assert.match(inputContract, /readonly phase:[^;]*'sending'/, "InputState.phase 缺少 0.2.2 的 'sending'(发送即关闭依赖它)")
+console.log("✓ u3b 草稿读写面与 phase:'sending' 仍在")
+
 // u4. 设置页标签槽位仍被声明(类型 + 运行时)
 const settingsSlots = readText('node_modules/@deepseek-ai/dsh-client-ui-settings/lib/types/client/contract/slots.d.ts')
 assert.match(settingsSlots, /['"]settings\.plugins\.tab['"]/, 'settings.plugins.tab 必须仍被类型声明')
