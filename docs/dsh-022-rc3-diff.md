@@ -41,7 +41,7 @@
 |---|---|---|---|
 | `conversation.input.right` | **声明块逐字节相同**(`kind:'list'`、`scope:'session'`,哈希 `42609d09c15c01e2`) | 无 | 无需改 |
 | `conversation.input.dock` | **声明块逐字节相同**(哈希 `3877c57ff1a60932`) | 无 | 无需改 |
-| composer 标准 props(`useInput`/`inputActions`/`sessionId`) | **`SessionStandardProps` 块逐字节相同**(哈希 `a88c9594ca61cd76`) | 按钮/面板读写草稿路径不变 | 无需改 |
+| composer 标准 props(`useInput`/`inputActions`/`sessionId`) | **`SessionStandardProps` 块逐字节相同**(哈希 `a88c9594ca61cd76`,块内含 `useConversation`/`useInput`/`inputActions`);`sessionId` 另由 ui-slots 按 `scope:'session'` 经 `InjectParams` 注入,该注入面两版亦逐字相同(哈希 `8d81d39326eab80a`) | 按钮/面板读写草稿路径不变 | 无需改 |
 | `InputActions.setDraft` / `InputState.draft` | **签名与字段逐字节相同** | 「替换输入框/撤回」不变 | 无需改 |
 | `InputState.phase` | **五值联合不变**(含 `'sending'`) | 「发送即关闭」判定不变 | 无需改 |
 | `settings.plugins.tab` | **声明块逐字节相同**(哈希 `2e49302e62eee7c7`);运行时 bundle 仍在 | 设置标签页路径不变 | 无需改 |
@@ -101,7 +101,7 @@
 
 ### 2.5 桌面端与打包面
 
-- app.asar 顶层 `@deepseek-ai/dsh-desktop@0.2.2-rc.3`;完整 runtime 树在 `dsh/node_modules/@deepseek-ai`(338 包,328 个 rc.3;vendor:cordis 4.1.0、cosmokit 1.9.0、schemastery 3.19.0、cordis-plugin-group/include/loader 1.1.0、cordis-plugin-timer 1.2.0、node-addon-system 0.1.2)。
+- app.asar 顶层 `@deepseek-ai/dsh-desktop@0.2.2-rc.3`;完整 runtime 树在 `dsh/node_modules/@deepseek-ai`(338 包,328 个 rc.3;其余 10 个为 vendor:cordis 4.1.0、cosmokit 1.9.0、schemastery 3.19.0、cordis-plugin-group/include/loader 1.1.0、cordis-plugin-timer 1.2.0、node-addon-system 0.1.2、libreoffice-kit / libreoffice-kit-win32-x64 0.2.3)。
 - `dsh-web-frontend` dist 的 `staticModules` 映射与 rc.1 **完全一致**(11 个静态模块)。
 - runtime CLI 入口改为经 Electron(`ELECTRON_RUN_AS_NODE=1`)执行 `app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js`;`dsh.cmd` 路径与用法不变,`--version` = 0.2.2-rc.3。
 - 全部 npm tarball 自 rc.2 起附带 `src/` 与 `.map`(package.json `files` 字段变化);`sync:types` 只拷 `package.json` + `lib`,不受影响。
@@ -143,7 +143,7 @@
 
 - Host 日志:`[dsh-prompt-optimizer] loaded, POST /dsh-prompt-optimizer/optimize`;无 manifest / engines 警告;
 - 发送栏:「优化」按钮空草稿 disabled,键入草稿后自动 enabled;
-- 优化面板:点击后打开,流式输出,**两次实测分别 4.2s / 5.3s 成功产出优化稿**;徽章 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 5.3s`;面板出现「替换输入框 / 复制 / 重新优化 / 关闭」;
+- 优化面板:点击后打开,流式输出,**两次实测分别 4.2s / 5.3s 成功产出优化稿**;徽章 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 4.2s`(所附截图为首次运行);面板出现「替换输入框 / 复制 / 重新优化 / 关闭」;
 - 替换输入框:点击后草稿被替换为优化稿(面板显示「已替换 ✓」),按钮变为「撤回」;撤回后草稿恢复原文(46 字符),按钮恢复「替换输入框」;
 - 设置页:设置 → 内置插件 → 「提示词优化」标签页正常出现,设置卡完整渲染,模型下拉列出宿主全部目录(85+ 项);切换输出语言 zh → en → 写入 profile `cordis.patch.yml`(`language: en`),再切回 `zh` 成功落盘;
 - 浏览器控制台:**零 error / 零 uncaught exception**;仅有两条插件预期的上下文降级 warn(新会话无历史)。
@@ -166,12 +166,13 @@
 | **0.2.2-rc.3**(Web + 官方桌面端运行时) | ✅ 实测(成功产出优化稿) | ✅ 实测(标签页 + 设置卡读写) | ✅ 实测 | ✅ 契约核对 + 事件窗口实测降级 |
 | **0.2.2-rc.1** | ✅ 实测(v0.6.4) | ✅ 实测 | ✅ 实测 | ✅ 契约核对 |
 | **0.2.1-rc.5** | ✅ 实测 | ✅ 实测 | ✅ 实测 | ✅ 契约核对 |
-| **0.2.1-rc.3 / rc.2** | ✅ | ✅ | ✅ | ✅ |
+| **0.2.1-rc.3** | ✅ 实测(路由/SSE/错误态) | ✅ 实测(标签页 + 设置卡读写) | ✅ 实测 | ✅ 契约核对 |
+| **0.2.1-rc.2** | ✅ 产物核对 | ✅ 产物核对 | ✅ 产物核对 | ✅ 契约核对 |
 | **0.2.0-rc.2** | ✅ | ✅ | ✅ | ✅ |
 | 0.1.5 / 0.1.2 / 0.1.1 / 0.1.0-rc.7+ | ✅ | ✅ | ✅ | 降级 |
 | ≥ 0.3.0 | — | — | — | `engines.dsh` 拒绝安装(显式放弃) |
 
-> 0.1.x 宿主没有 `phase` 字段,「发送即关闭」继续按草稿清空 / `running` / 队列判定,行为不变。0.2.2-rc.2 未单独实测:rc.3 的契约核对完整覆盖 rc.2 引入的全部面向面变化(§0.1),且 rc.2 → rc.3 上游仅新增会话导入插件与桌面更新修复。
+> 0.1.x 宿主的 `phase` 不含 `'sending'`(四值 `plain` / `adjudicating` / `claimed` / `submitting` 自 engines 下限 0.1.0-rc.7 起即存在),「发送即关闭」继续按草稿清空 / `running` / 队列判定,行为不变。0.2.2-rc.2 未单独实测:rc.3 的契约核对完整覆盖 rc.2 引入的全部面向面变化(§0.1),且 rc.2 → rc.3 上游仅新增会话导入插件与桌面更新修复。
 
 ---
 

@@ -24,7 +24,7 @@
 2026-11-16,Windows,官方桌面端自带的 rc.3 runtime CLI(`E:\DSH\resources\runtime\cli\bin\dsh.cmd`,`--version` = `0.2.2-rc.3`)引导独立 profile `po-rc3-test`,安装本版 tgz 后启动 Web,用无头 Chrome(CDP)真实驱动:
 
 - Host 日志 `[dsh-prompt-optimizer] loaded`;无 manifest / engines 警告;
-- 发送栏「优化」按钮空草稿 disabled,键入草稿后 enabled;点击后流式输出,**两次实测 4.2s / 5.3s 成功产出优化稿**(`magpie / trae-cn/deepseek-v4.1-flash-max · 用时 5.3s`);
+- 发送栏「优化」按钮空草稿 disabled,键入草稿后 enabled;点击后流式输出,**两次实测 4.2s / 5.3s 成功产出优化稿**(徽章 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 4.2s`,所附截图为首次运行);
 - 「替换输入框 → 撤回」路径正常(替换后草稿为优化稿、面板显示「已替换 ✓」,撤回恢复原文);设置 → 内置插件 → 「提示词优化」标签页与设置卡完整渲染,模型下拉列出宿主全部目录;输出语言 zh → en → zh 切换均写入 profile `cordis.patch.yml`;
 - 浏览器控制台零 error、零未捕获异常(仅两条新会话无历史的预期降级 warn)。
 
