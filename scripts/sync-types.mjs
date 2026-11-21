@@ -21,7 +21,7 @@ const root = resolve(import.meta.dirname, '..')
 const nmDir = join(root, 'node_modules', '@deepseek-ai')
 
 /**
- * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.2.2-rc.3 的内置包一致)。
+ * 已发布、需要真实类型的包(钉版本,与 dsh CLI 0.2.2-rc.5 的内置包一致)。
  *
  * 0.1.2 起上游把客户端运行时拆进了消费方:`dsh-client-runtime` 与
  * `dsh-host-apiproxy` 不再发布(restricted),`ClientContext` 由 cordis 的
@@ -31,26 +31,26 @@ const nmDir = join(root, 'node_modules', '@deepseek-ai')
  * dsh-attachment 均改为从它导入并再导出),故一并钉真实类型。
  */
 const PACKAGES = {
-  'dsh-client-connection': '0.2.2-rc.3',
-  'dsh-client-ui-slots': '0.2.2-rc.3',
-  'dsh-client-ui-conversation': '0.2.2-rc.3',
-  'dsh-client-ui-session': '0.2.2-rc.3',
-  'dsh-client-ui-settings': '0.2.2-rc.3',
-  'dsh-client-ui-settings-plugins': '0.2.2-rc.3',
-  'dsh-client-ui-renderer': '0.2.2-rc.3',
-  'dsh-api-remotes': '0.2.2-rc.3',
-  'dsh-attachment': '0.2.2-rc.3',
-  'dsh-brand': '0.2.2-rc.3',
-  'dsh-client-locale': '0.2.2-rc.3',
-  'dsh-client-ui-primitives': '0.2.2-rc.3',
-  'dsh-commands': '0.2.2-rc.3',
-  'dsh-error': '0.2.2-rc.3',
-  'dsh-llm-retry': '0.2.2-rc.3',
-  'dsh-session': '0.2.2-rc.3',
-  'dsh-session-projection': '0.2.2-rc.3',
-  'dsh-token-meter': '0.2.2-rc.3',
-  'dsh-tool-todo': '0.2.2-rc.3',
-  'dsh-tools': '0.2.2-rc.3',
+  'dsh-client-connection': '0.2.2-rc.5',
+  'dsh-client-ui-slots': '0.2.2-rc.5',
+  'dsh-client-ui-conversation': '0.2.2-rc.5',
+  'dsh-client-ui-session': '0.2.2-rc.5',
+  'dsh-client-ui-settings': '0.2.2-rc.5',
+  'dsh-client-ui-settings-plugins': '0.2.2-rc.5',
+  'dsh-client-ui-renderer': '0.2.2-rc.5',
+  'dsh-api-remotes': '0.2.2-rc.5',
+  'dsh-attachment': '0.2.2-rc.5',
+  'dsh-brand': '0.2.2-rc.5',
+  'dsh-client-locale': '0.2.2-rc.5',
+  'dsh-client-ui-primitives': '0.2.2-rc.5',
+  'dsh-commands': '0.2.2-rc.5',
+  'dsh-error': '0.2.2-rc.5',
+  'dsh-llm-retry': '0.2.2-rc.5',
+  'dsh-session': '0.2.2-rc.5',
+  'dsh-session-projection': '0.2.2-rc.5',
+  'dsh-token-meter': '0.2.2-rc.5',
+  'dsh-tool-todo': '0.2.2-rc.5',
+  'dsh-tools': '0.2.2-rc.5',
 }
 
 mkdirSync(nmDir, { recursive: true })
