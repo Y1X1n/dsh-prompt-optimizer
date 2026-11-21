@@ -3,7 +3,7 @@
 调研日期:2026-11-21
 调研对象:上游 `github.com/deepseek-ai/deepseek-harness` tag `dsh-v0.2.2-rc.3` → `dsh-v0.2.2-rc.5`(中间含 `dsh-v0.2.2-rc.4`,2026-11-17 发布;rc.5 于 2026-11-18 发布);npm 上 `@deepseek-ai/*@0.2.2-rc.3` / `@0.2.2-rc.5` 的 tarball;`@deepseek-ai/dsh@0.2.2-rc.5` 的真实 Web 运行时。
 
-**结论先行:本插件在 0.2.2-rc.5 上可无损升级,平台契约面全部保持,`src/` 零改动。** 插件依赖的三个槽位(`conversation.input.right`、`conversation.input.dock`、`settings.plugins.tab`)声明块、`SessionStandardProps` 块、`setDraft` / `draft` / `phase:'sending'` 与 rc.3 **逐字节相同**(四个块哈希与 rc.5 时代历史记录一致);20 个钉版包中 18 个的 `lib/` 产物逐文件字节相同,`dsh-api-remotes` 仅生成代码里一处 source line 注解位移(归一化后相同),唯一有类型内容变化的是 `dsh-llm`——新增失败码 `CONTENT_REFUSED`(加法);桌面端 `staticModules` 基线与 ModuleLoader 包装形态不变;vendor 版本线(cordis 4.1.0 / schemastery 3.19.0 / zod 4.6.6)不变。本版为纯声明层适配:类型基线 20 包钉到 rc.5、devDeps 同版本、lock 重生成、版本/文档更新,并在真实 rc.5 Web 上完成一次成功产出优化稿的端到端验证(含替换/撤回、设置卡读写与持久化、连接测试)。
+**结论先行:本插件在 0.2.2-rc.5 上可无损升级,平台契约面全部保持,`src/` 零改动。** 插件依赖的三个槽位(`conversation.input.right`、`conversation.input.dock`、`settings.plugins.tab`)声明块、`SessionStandardProps` 块、`setDraft` / `draft` / `phase:'sending'` 与 rc.3 **逐字节相同**(四个块哈希与 rc.5 时代历史记录一致);20 个钉版包中 19 个的 `lib/` 产物逐文件字节相同,`dsh-api-remotes` 仅生成代码里一处 source line 注解位移(归一化后相同);devDep `dsh-llm` 的唯一类型变化是新增失败码 `CONTENT_REFUSED`(加法);桌面端 `staticModules` 基线与 ModuleLoader 包装形态不变;vendor 版本线(cordis 4.1.0 / schemastery 3.19.0 / zod 4.6.6)不变。本版为纯声明层适配:类型基线 20 包钉到 rc.5、devDeps 同版本、lock 重生成、版本/文档更新,并在真实 rc.5 Web 上完成一次成功产出优化稿的端到端验证(含替换/撤回、设置卡读写与持久化、连接测试)。
 
 ---
 
@@ -40,7 +40,8 @@
 | `settings.plugin.item`(0.1.x legacy) | **仍不存在**(类型与运行时 0 命中) | 独立 `inject` 守卫前提仍成立 | 无需改 |
 | `ui-slots` / `ui-conversation` / `ui-settings` / `ui-settings-plugins` / `ui-renderer` / `ui-session` | 除 `package.json` 版本号外**零字节变化** | 无 | 无需改 |
 | `dsh-llm` | `lib/types/error.d.ts` 新增 `CONTENT_REFUSED`(加法);`lib/index.js` 仅多该一行;公开方法面不变 | 插件只读 `finish.reason.failure.code/message`,异常路径按既有 catch 处理 | 无需改 |
-| `dsh-api-remotes` | `lib/client.js` 归一化 source line 注解后**完全相同**(仅一处 `line: 152 → 174`),来自 `web` 包源码行移动 | 插件实际使用面不变 | 无需改 || `dsh-client-ui-settings-web-search` | Web Search 设置卡文案/默认值调整(13 文件) | 插件不消费该包 | 无需改 |
+| `dsh-api-remotes` | `lib/client.js` 归一化 source line 注解后**完全相同**(仅一处 `line: 152 → 174`),来自 `web` 包源码行移动 | 插件实际使用面不变 | 无需改 |
+| `dsh-client-ui-settings-web-search` | Web Search 设置卡文案/默认值调整(13 文件) | 插件不消费该包 | 无需改 |
 | `dsh-client-connection` | 除 `package.json` 外**零字节变化**;`window.__ModuleLoader__.load({ id, factory })` 包装形态不变 | client bundle banner/footer 无需调整 | 无需改 |
 | `dsh-web-frontend` dist | **逐字节相同**(`index-Ciz7DZxv.js`);`staticModules` 仍是同样 11 个模块 | 插件 client bundle 只 `require` react、react/jsx-runtime | 无需改 |
 | `dsh-session` / `dsh-session-projection` / `dsh-api-session-controller` / `dsh-settings` / `dsh-package-manifest` | 除 `package.json` 外零字节变化;`modelCatalog` RPC、`binding().eventSource.entries` 仍在 | 上下文读取路径不变 | 无需改 |
@@ -75,7 +76,7 @@ rc.4 的三个提交最终收敛为以下行为:
 
 对插件的影响:
 
-- 插件 Host 侧 `collectText` 只消费 `StreamChunk`;上游抛出的 `LlmError` 会从 `for await` 冒泡,进入优化路由既有的 catch:若尚未发送任何 delta,按既有回退链尝试下一路由;否则以 SSE `error` 事件把 `模型调用失败(CONTENT_REFUSED): ...` 送达面板。该路径与既有的 `AUTH` / `DOWN` / 中途断流错误完全一致,无需新增分支。
+- 插件 Host 侧 `collectText` 只消费 `StreamChunk`。上游 `adapterStream` 会捕获适配器抛出的 `LlmError`,把它转成 `finish` 失败块(`failure.code = 'CONTENT_REFUSED'`);插件 `collectText` 见到 `finish.kind === 'error'` 后抛出 `模型调用失败(CONTENT_REFUSED): ...`,进入优化路由既有的 catch:若尚未发送任何 delta,按既有回退链尝试下一路由;否则以 SSE `error` 事件送达面板。该路径与既有的 `AUTH` / `DOWN` / 中途断流错误完全一致,无需新增分支。
 - 插件从不 `new LlmError` / `new HarnessError`,也不白名单校验失败码,因此新增码不影响任何判定。
 - `dsh-llm` 公开方法面(`stream` / `listModels` / `listProviders` / `resolveModelInfo`)两版相同。
 
@@ -128,11 +129,11 @@ rc.4 的 LiveShare 修复集中在 `packages/experimental/liveshare/src/host/tun
 
 使用 npm 发布的 rc.5 CLI(`@deepseek-ai/dsh@0.2.2-rc.5`,`--version` = `0.2.2-rc.5`)引导全新 profile `po-022-rc5-test`,安装 `y1x1n-dsh-prompt-optimizer-0.6.6.tgz` 后启动 Web(`--no-open --port 8125`),无头 Edge(Playwright/CDP)真实驱动:
 
-- Host 日志:`[dsh-prompt-optimizer] loaded, POST /dsh-prompt-optimizer/optimize`;路由 `HTTP 200`;
+- Host 日志:`[dsh-prompt-optimizer] loaded, POST /dsh-prompt-optimizer/optimize`;Playwright 网络观测到优化路由 `HTTP 200`;
 - 发送栏:「优化」按钮空草稿 disabled,键入草稿后自动 enabled;
-- 优化面板:点击后打开并流式输出,**2.6s 成功产出优化稿**(端到端等待 3.1s);徽章 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 2.6s`;面板出现「替换输入框 / 复制 / 重新优化 / 关闭」;
+- 优化面板:点击后打开并流式输出,**2.6s 成功产出优化稿**(面板在 3.1s 内出现成功态);徽章 `magpie / trae-cn/deepseek-v4.1-flash-max · 用时 2.6s`;面板出现「替换输入框 / 复制 / 重新优化 / 关闭」;
 - 替换输入框:点击后草稿被替换为优化稿(面板显示「已替换 ✓」),按钮变为「撤回」;撤回后草稿恢复原文(29 字符),按钮恢复「替换输入框」;
-- 设置页:设置 → 内置插件 → 「提示词优化」标签页正常出现,设置卡完整渲染,模型下拉列出宿主全部目录(85+ 项);「测试连接」返回 `连接正常:deepseek-official / deepseek-flash(609ms)`;输出语言 zh → en → zh 切换均写入 profile `cordis.patch.yml`(`language: en` → `language: zh`);
+- 设置页:设置 → 内置插件 → 「提示词优化」标签页正常出现,设置卡完整渲染,模型下拉列出宿主全部目录(5 组 82 个模型);「测试连接」返回 `连接正常:deepseek-official / deepseek-flash(609ms)`;输出语言 zh → en → zh 切换均写入 profile `cordis.patch.yml`(`language: en` → `language: zh`);
 - 浏览器控制台:**零 error / 零 uncaught exception**;仅有两条插件预期的上下文降级 warn(新会话无历史)。
 
 证据截图:[`docs/screenshots/dsh-022-rc5-e2e-optimize-success.png`](screenshots/dsh-022-rc5-e2e-optimize-success.png)、[`docs/screenshots/dsh-022-rc5-e2e-settings.png`](screenshots/dsh-022-rc5-e2e-settings.png)。

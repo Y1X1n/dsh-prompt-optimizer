@@ -14,7 +14,7 @@
 
 - rc.3 → rc.5 共 **13 个 commit**;27 个 npm 包 rc.3 / rc.5 双组 tarball 逐文件字节比对。
 - 三个槽位声明块与 `SessionStandardProps` 块**逐字节相同**(四个块哈希与 rc.5 时代一致);`setDraft` / `draft` / `phase:'sending'` 逐字不变;`modelCatalog` RPC、`binding().eventSource.entries` 仍在;legacy `settings.plugin.item` 仍 0 命中。
-- 20 个钉版包中 18 个的 `lib/` 产物逐文件字节相同;`dsh-api-remotes` 仅一处生成代码 source line 注解位移(归一化后相同);`dsh-llm` 唯一类型变化是新增失败码 `CONTENT_REFUSED`(加法)。
+- 20 个钉版包中 19 个的 `lib/` 产物逐文件字节相同;`dsh-api-remotes` 仅一处生成代码 source line 注解位移(归一化后相同);devDep `dsh-llm` 的唯一类型变化是新增失败码 `CONTENT_REFUSED`(加法)。
 - 桌面端 `staticModules` 基线完全相同(11 个模块),`dsh-web-frontend` 的 `dist/` 逐字节相同;`dsh-client-connection` 除版本号外无字节变化,ModuleLoader 包装形态不变。
 - 真实代码变化集中在:DeepSeek 内容安全拒绝处理、LiveShare 桌面 tunnel worker、Web Search 默认提供方(DeepSeek 模型走服务端搜索);插件均不消费。
 
