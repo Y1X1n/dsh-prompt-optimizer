@@ -19,7 +19,7 @@
 
 | 主题 | 版本 | 内容 | 与本插件的关系 |
 |---|---|---|---|
-| DeepSeek 内容安全审查 | rc.4 | `llm-deepseek` 调整安全审查:先加 `safetyCheck` 开关、再改为始终请求、最终改为**不在请求体发送 `safety_check`**;模型返回 `stop_reason:'refusal'` 时抛出 `LlmError(..., 'CONTENT_REFUSED')`,并在 `LLM_FAILURE_CODES` 新增 `CONTENT_REFUSED` | 插件从不构造 `LlmError`,只消费流式结果;被拒绝时上游改抛异常,插件 `collectText` 会让异常冒泡,优化路由按既有错误路径返回 SSE `error`(消息含失败码),行为符合预期 |
+| DeepSeek 内容安全审查 | rc.4 | `llm-deepseek` 调整安全审查:先加 `safetyCheck` 开关、再改为始终请求、最终改为**不在请求体发送 `safety_check`**;模型返回 `stop_reason:'refusal'` 时抛出 `LlmError(..., 'CONTENT_REFUSED')`,并在 `LLM_FAILURE_CODES` 新增 `CONTENT_REFUSED` | 插件从不构造 `LlmError`,只消费流式结果;被拒绝时上游 `adapterStream` 会把 `LlmError` 转成 `finish` 失败块,插件 `collectText` 再把它转成异常,优化路由按既有错误路径返回 SSE `error`(消息含失败码),行为符合预期 |
 | LiveShare 桌面分享 | rc.4 | Host 的 Electron Node 模式下启动 tunnel worker,修复桌面端无法创建分享;测试改用真实时钟推导凭据有效期 | 插件不依赖 LiveShare |
 | Web Search 默认提供方 | rc.5 | DeepSeek 模型改用 DeepSeek 服务端搜索(不按次收费),其他模型默认 DeepSeek Search API;`web` / `tool-web` / `web-search-deepseek` / `ui-settings-web-search` / base patch 同步调整 | 插件不调用 Web Search,不消费 `ui-settings-web-search` |
 | 发布工程 | rc.4 / rc.5 | monorepo 全量包版本号 bump 到 0.2.2-rc.5 | 类型基线随之升级 |

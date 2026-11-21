@@ -1,6 +1,6 @@
 # PR #20 独立审核报告(v0.6.6 / 适配 dsh 0.2.2-rc.5)
 
-审核对象:`Y1X1n/dsh-prompt-optimizer` PR #20,分支 `feat/dsh-0.2.2-rc.5`(HEAD `55b03db`),base `main`(`3533a78`,单提交),变更范围 9 文件、+320/−71。
+审核对象:`Y1X1n/dsh-prompt-optimizer` PR #20,分支 `feat/dsh-0.2.2-rc.5`,base `main`(`3533a78`)。审核基线 HEAD `55b03db`,修复提交 `a318f45`,PR 已合并为 `f4d6472`;变更范围 9 文件、+320/−71。
 审核方式:独立复跑 + 从 27 个 npm 包双组 tarball **重新解包**逐文件字节比对 + 独立复算契约块哈希 + 检查运行中的 rc.5 宿主 / boot manifest / profile / 截图 + semver 与文档交叉核对。**未修改仓库文件**(取证脚本在 `Temp/review-066/`)。
 
 ---
@@ -51,7 +51,7 @@
 - 修复:改为「5 组 82 个模型」。
 
 **L3 — LlmError 传播机制描述不精确**
-- 位置:`docs/dsh-022-rc5-diff.md:78`。
+- 位置:`docs/dsh-022-rc5-diff.md:22`、`:78`。
 - 证据:`dsh-llm` 的 `adapterStream` 会捕获 adapter 抛出的 `LlmError` 并转成 `finish` 失败块;插件 `collectText` 见到 `finish.kind === 'error'` 后再抛 `模型调用失败(CONTENT_REFUSED): ...`,并非 `LlmError` 直接从 `for await` 冒泡。可观察行为与文档结论一致。
 - 修复:改为「adapterStream 转 finish 失败块 → collectText 包装」的准确链路。
 
@@ -77,7 +77,7 @@
 
 1. **L1**:四处「18/20」改为「19/20」,并明确 `dsh-llm` 是额外 devDep。
 2. **L2**:模型目录数字改为「5 组 82 个模型」。
-3. **L3**:按 `adapterStream → finish 失败块 → collectText 包装` 修正机制描述。
+3. **L3**:`docs/dsh-022-rc5-diff.md:22`(§0.1 表格)与 `:78`(§2.2)两处均按 `adapterStream → finish 失败块 → collectText 包装` 修正机制描述。
 4. **L4**:拆开被合并的 Markdown 表格行。
 5. **L5**:E2E 日志口径改为可复核的 Playwright 网络观测表述。
 
